@@ -1,0 +1,5 @@
+node_modules/
+dist/
+dist-electron/
+server/data/
+server/uploads/

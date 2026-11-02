@@ -1,0 +1,69 @@
+*{box-sizing:border-box}
+html,body,#root{height:100%}
+body{margin:0;background:#101114;font-family:system-ui,Segoe UI,Roboto,sans-serif;color:#111}
+button{font-family:inherit}
+
+/* ===== layar pelanggan ===== */
+.stage{position:fixed;inset:0;background:#1b1d22 center/cover no-repeat;color:#fff;overflow:hidden;user-select:none;--accent:#6c4cf5}
+.stage .bgv{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.lg-tl{position:absolute;left:24px;top:16px;max-height:54px;max-width:30vw;object-fit:contain;z-index:3}
+.ft-b{position:absolute;bottom:12px;left:0;right:0;text-align:center;font-size:13px;letter-spacing:.12em;text-transform:uppercase;text-shadow:0 1px 4px #000;z-index:3;pointer-events:none}
+.tap{position:absolute;inset:0;background:transparent;border:0;color:#fff;font-size:22px;letter-spacing:.2em;text-transform:uppercase;text-shadow:0 2px 8px #000;cursor:pointer;display:flex;align-items:flex-end;justify-content:center;padding-bottom:12vh;z-index:2}
+.center{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:2;padding:70px 24px 40px}
+.cardw{background:rgba(255,255,255,.96);color:#111;border-radius:14px;padding:20px 24px;box-shadow:0 12px 40px rgba(0,0,0,.45);text-align:center;max-width:92vw}
+.btnw{background:#fff;color:#111;border:1px solid #cfd2d6;border-radius:6px;padding:11px 26px;font-size:13px;letter-spacing:.14em;text-transform:uppercase;cursor:pointer;min-height:44px}
+.btnw.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+.btnw:disabled{opacity:.5}
+.btnw:focus-visible,.nav:focus-visible,.tab:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.pickrow{display:flex;align-items:center;gap:16px;justify-content:center}
+.nav{width:48px;height:48px;border-radius:50%;border:1px solid #cfd2d6;background:#fff;font-size:26px;cursor:pointer}
+.pickstrip{height:min(56vh,520px);width:auto}
+.strip{display:block}
+.ftitle{margin:10px 0;font-size:13px;letter-spacing:.14em;text-transform:uppercase}
+.dots{display:flex;gap:6px;justify-content:center;margin:6px 0 12px}.dots i{width:7px;height:7px;border-radius:50%;background:#c9ccd1}.dots i.on{background:var(--accent)}
+.pbig{font-size:34px;font-weight:700;margin:8px 0}
+.cardw input{width:100%;padding:10px;border:1px solid #c3c6c8;border-radius:6px;font:inherit;margin:6px 0 10px}
+.cardw .btnw{display:block;width:100%;margin:8px 0}
+
+/* kamera */
+.camwrap{position:absolute;inset:0;display:flex;gap:2vw;align-items:center;justify-content:center;padding:70px 3vw 40px;z-index:2}
+.camleft{flex:1 1 60%;max-width:62vw;display:flex;flex-direction:column;align-items:center;gap:12px}
+.camframe{position:relative;width:100%;max-height:68vh;background:#000;border-radius:6px;overflow:hidden;box-shadow:0 10px 36px rgba(0,0,0,.5)}
+.camframe video{width:100%;height:100%;display:block;object-fit:cover}
+.camframe .rev{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.ovy{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;text-shadow:0 2px 10px rgba(0,0,0,.8);font-size:clamp(28px,4.2vw,56px);font-weight:600;letter-spacing:.06em;text-align:center;padding:12px}
+.ovy.btn{background:rgba(0,0,0,.25);border:0;cursor:pointer;width:100%}
+.ovy.huge{font-size:clamp(90px,16vw,220px);font-weight:300}
+.flash{position:absolute;inset:0;background:#fff;opacity:.85}
+.revbtns{display:flex;gap:12px}
+.camright{flex:0 1 26vw;display:flex;justify-content:center}
+.camright .strip{height:min(72vh,640px);width:auto;background:#fff;border-radius:6px;box-shadow:0 10px 36px rgba(0,0,0,.5)}
+.cancel{position:absolute;left:24px;bottom:34px;z-index:4;background:rgba(0,0,0,.4);color:#fff;border:1px solid rgba(255,255,255,.5);border-radius:6px;padding:8px 14px;cursor:pointer;letter-spacing:.1em;font-size:12px}
+
+/* pilih / cetak */
+.selwrap{position:absolute;inset:0;display:flex;gap:3vw;align-items:center;justify-content:center;padding:70px 3vw 40px;z-index:2}
+.selmain{display:flex;flex-direction:column;align-items:center;gap:10px}
+.selmain .strip,.selmain .gifp,.selmain .livep{height:min(64vh,600px);width:auto;background:#fff;border-radius:6px;box-shadow:0 10px 36px rgba(0,0,0,.5);object-fit:contain}
+.tabs{display:flex;gap:8px}.tab{background:rgba(255,255,255,.9);color:#111;border:0;border-radius:6px;padding:8px 18px;font-size:12px;letter-spacing:.14em;cursor:pointer}.tab.on{background:var(--accent);color:#fff}
+.selside{display:flex;flex-direction:column;gap:10px;align-items:stretch;width:min(22vw,230px);max-height:80vh}
+.cands{overflow:auto;display:flex;flex-direction:column;gap:8px;padding:2px}
+.cand{border:3px solid transparent;border-radius:6px;padding:0;background:#fff;cursor:pointer;overflow:hidden}.cand.on{border-color:var(--accent)}.cand img{display:block;width:100%}
+.hint{font-size:12px;text-shadow:0 1px 4px #000;text-align:center}
+
+/* tombol admin pojok kanan atas + panel operator */
+.optrig{position:fixed;right:10px;top:10px;width:46px;height:46px;border-radius:50%;border:1px solid rgba(255,255,255,.4);background:rgba(0,0,0,.35);color:#fff;font-size:22px;cursor:pointer;opacity:.45;z-index:50}
+.optrig:hover,.optrig:focus-visible{opacity:1}
+.ovl{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:60;padding:14px;overflow:auto}
+.card{background:#dfe1e2;border-radius:18px;padding:22px 20px;width:min(460px,100%);max-height:96vh;overflow:auto}
+.b{display:block;width:100%;background:#6c4cf5;color:#fff;border:0;border-radius:6px;padding:12px;margin:8px 0;font-weight:600;font-size:14px;cursor:pointer}
+.b.hl{background:#111;font-size:16px;padding:16px}.b.alt{background:#fff;color:#111}.b.sm{width:auto;padding:6px 12px;margin:0;font-size:12px;text-decoration:none}
+.b:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid #111;outline-offset:2px}
+.card select,.card input{width:100%;padding:9px;border:1px solid #c3c6c8;border-radius:6px;font:inherit;margin:4px 0 10px;background:#fff}
+.card label{font-size:12px;color:#555}
+.card h3{text-align:center;margin:8px 0 12px}
+.card video{width:100%;border-radius:12px;background:#000}
+.row{display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid #c8cacb;font-size:13px}.row img{height:60px;border-radius:4px}.row div{flex:1}
+.tag{background:#fff;border-radius:4px;padding:1px 6px;font-size:11px}
+.chk{display:flex;gap:8px;align-items:center;font-size:13px;color:#111;margin:6px 0}.chk input{width:auto;margin:0}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#111;color:#fff;padding:10px 16px;border-radius:6px;z-index:90;max-width:90vw}
+@media (max-width:900px){.camwrap,.selwrap{flex-direction:column;overflow:auto}.camleft{max-width:94vw}}

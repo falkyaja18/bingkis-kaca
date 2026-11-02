@@ -1,0 +1,9 @@
+{
+  "name": "photobooth",
+  "private": true,
+  "scripts": {
+    "install:all": "npm --prefix server install && npm --prefix dashboard install && npm --prefix kiosk install",
+    "build": "npm --prefix dashboard run build && npm --prefix kiosk run build",
+    "start": "npm --prefix server start"
+  }
+}

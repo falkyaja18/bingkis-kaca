@@ -1,0 +1,51 @@
+{
+  "name": "photobooth-kiosk",
+  "productName": "Photobooth Kiosk",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Kiosk edge client: Electron + React (Vite)",
+  "main": "electron/main.cjs",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k \"vite\" \"wait-on http://localhost:5174 && cross-env ELECTRON_RENDERER_URL=http://localhost:5174 electron .\"",
+    "dev:web": "vite",
+    "build": "vite build",
+    "start": "electron .",
+    "dist": "vite build && electron-builder --win"
+  },
+  "dependencies": {
+    "qrcode-generator": "^1.4.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "concurrently": "^9.0.1",
+    "cross-env": "^7.0.3",
+    "electron": "^31.7.0",
+    "electron-builder": "^24.13.3",
+    "vite": "^5.4.0",
+    "wait-on": "^8.0.0"
+  },
+  "build": {
+    "appId": "com.photobooth.kiosk",
+    "files": [
+      "electron/**",
+      "dist/**"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/bin",
+        "to": "bin"
+      }
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": true
+    }
+  }
+}

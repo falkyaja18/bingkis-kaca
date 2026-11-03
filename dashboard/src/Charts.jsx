@@ -40,6 +40,24 @@ export function Spark({ values, color = '#6c4cf5' }) {
   )
 }
 
+// Bar chart harian (Senin–Minggu). data: [{label, value}]
+export function DailyBars({ data, color = '#6c4cf5', fmt = v => Number(v).toLocaleString('id-ID') }) {
+  const max = Math.max(1, ...data.map(d => d.value))
+  return (
+    <div className="dchart" role="img" aria-label="Grafik harian">
+      {data.map((d, i) => (
+        <div className="dcol" key={i}>
+          <div className="dval">{fmt(d.value)}</div>
+          <div className="dtrack">
+            <div className="dbar" style={{ height: d.value ? Math.max(4, d.value / max * 100) + '%' : '3px', background: d.value ? color : 'var(--line)' }} />
+          </div>
+          <div className="dlbl">{d.label}</div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export function Donut({ items }) {
   const total = items.reduce((a, i) => a + i.value, 0), R = 52, C = 2 * Math.PI * R
   let off = 0

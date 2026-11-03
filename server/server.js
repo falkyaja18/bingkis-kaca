@@ -180,16 +180,17 @@ function saveSession(k, o) { // o: {code, galleryId, trxId, composite:Buffer, gi
   const raws = (o.raws || []).map((r, i) => { fs.writeFileSync(path.join(dir, `raw${i + 1}.jpg`), r); return `/uploads/sessions/${o.code}/raw${i + 1}.jpg`; });
   const g = S.galleries.find(x => x.id === o.galleryId);
   const exp = g && g.until ? new Date(g.until).toISOString() : new Date(Date.now() + 30 * 864e5).toISOString();
-  const rec = { code: o.code, kiosk: k.id, gallery: o.galleryId || null, trx: o.trxId || null, composite: `/uploads/sessions/${o.code}/composite.jpg`,
+  const i = S.sessions.findIndex(s => s.code === o.code), prev = i < 0 ? null : S.sessions[i];
+  const rec = { code: o.code, kiosk: k.id, gallery: o.galleryId || null, frame: clean(o.frameId) || (prev && prev.frame) || null, trx: o.trxId || null, composite: `/uploads/sessions/${o.code}/composite.jpg`,
     gif: o.gif ? `/uploads/sessions/${o.code}/strip.gif` : '', live: o.live ? `/uploads/sessions/${o.code}/live.mp4` : '', raws, prints: o.prints || 0, createdAt: o.createdAt || new Date().toISOString(), expiredAt: exp };
-  const i = S.sessions.findIndex(s => s.code === o.code); if (i < 0) S.sessions.unshift(rec); else S.sessions[i] = rec;
+  if (i < 0) S.sessions.unshift(rec); else S.sessions[i] = rec;
   save(); return rec;
 }
 // Unggah JSON (dipakai versi web/browser dari kiosk)
 app.post(K + '/galleries/upload', kau, (req, res) => {
   const b = req.body || {}, code = clean(b.sessionCode);
   if (!code || !b.composite) return res.status(400).json({ error: 'invalid' });
-  saveSession(req.k, { code, galleryId: b.galleryId, trxId: b.transactionId, composite: dataBuf(b.composite), raws: (b.raws || []).map(dataBuf), prints: b.printCount, createdAt: b.createdAt });
+  saveSession(req.k, { code, galleryId: b.galleryId, frameId: b.frameId, trxId: b.transactionId, composite: dataBuf(b.composite), raws: (b.raws || []).map(dataBuf), prints: b.printCount, createdAt: b.createdAt });
   res.json({ ok: true, url: '/s/' + code });
 });
 // Failsave ingest (multipart) dari Electron kiosk: manifest + photo (+ gif, raws). Idempotent per sessionCode.
@@ -207,7 +208,7 @@ app.post('/api/v1/sync/failsave-ingest', kau, upl.fields([{ name: 'photo', maxCo
       base: pd.amount, disc: 0, status: 'PAID', at: m.timestamp || new Date().toISOString(), client: m.transactionUuid };
     S.trx.unshift(t); trxId = t.id;
   }
-  saveSession(req.k, { code, galleryId: m.galleryId, trxId, composite: photo.buffer, gif: f.gif && f.gif[0].buffer, live: f.live && f.live[0].buffer, raws: (f.raws || []).map(x => x.buffer), extras: (f.extras || []).map(x => x.buffer), prints: m.printCount, createdAt: m.timestamp });
+  saveSession(req.k, { code, galleryId: m.galleryId, frameId: m.frameId, trxId, composite: photo.buffer, gif: f.gif && f.gif[0].buffer, live: f.live && f.live[0].buffer, raws: (f.raws || []).map(x => x.buffer), extras: (f.extras || []).map(x => x.buffer), prints: m.printCount, createdAt: m.timestamp });
   res.json({ acknowledged: true, url: '/s/' + code });
 });
 

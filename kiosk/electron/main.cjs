@@ -69,7 +69,7 @@ async function finalizeSession(p) {
   const pd = p.trx ? { amount: p.trx.base - p.trx.disc, paymentMethod: p.trx.method, voucherCode: p.trx.voucherCode, referenceNo: p.trx.inv } : { amount: 0, paymentMethod: 'EVENT', referenceNo: '' }
   const ts = new Date().toISOString()
   // 1) simpan ke failsave dulu (zero data loss), 2) cetak, 3) daemon mengunggah di latar belakang
-  await engine.save({ transactionUuid: code, sessionCode: code, kioskId: cfg.kioskId || '', galleryId: p.galleryId || null, trxId: p.trx ? p.trx.id : null, timestamp: ts, paymentDetails: pd, printCount: 1 }, { photo: printOut, gif, live, raws, extras })
+  await engine.save({ transactionUuid: code, sessionCode: code, kioskId: cfg.kioskId || '', galleryId: p.galleryId || null, frameId: p.frame ? p.frame.id : null, trxId: p.trx ? p.trx.id : null, timestamp: ts, paymentDetails: pd, printCount: 1 }, { photo: printOut, gif, live, raws, extras })
   const idx = readIdx(); idx.unshift({ code, createdAt: ts, prints: 0, gif: !!gif }); writeIdx(idx)
   printFile(printOut, cfg.copies || 1).then(() => { const a = readIdx(), e = a.find(x => x.code === code); if (e) { e.prints = cfg.copies || 1; writeIdx(a) } }).catch(e => { log('print', e.message); rdm && rdm.send('rdm:kiosk:error_alert', { errorCode: 'PRINT_FAILED', severity: 'CRITICAL', timestamp: new Date().toISOString(), detail: e.message }) })
   fsp.rm(tmp, { recursive: true, force: true }).catch(() => {})

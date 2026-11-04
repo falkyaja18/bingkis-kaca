@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import Crud, { Modal, Badge } from '../Crud.jsx'
-import SlotEditor from '../SlotEditor.jsx'
+import SlotEditor, { detectSizeLabel } from '../SlotEditor.jsx'
 import { useStore } from '../store.jsx'
 import { api } from '../api.js'
 import { useHealth, ago } from '../health.js'
@@ -139,54 +139,230 @@ export function Vouchers() {
 }
 
 /* ---------- Frame Photo / Frame GIF ---------- */
+const PREVIEW_COLORS = ['#ef4444', '#1e293b', '#f59e0b', '#7c3aed', '#16a34a', '#db2777', '#0891b2', '#ca8a04']
+
 function Preview({ f }) {
-  if (f.asset) return <img src={f.asset} height="70" alt="" style={{ background: '#d1d5db' }} />
-  const sc = 70 / f.h
+  const sc = 56 / (f.h || 1800)
+  const w = Math.max(36, Math.round((f.w || 1200) * sc))
+  const sl = slots(f)
   return (
-    <svg width={Math.round(f.w * sc)} height="70" viewBox={`0 0 ${f.w} ${f.h}`}>
-      <rect width={f.w} height={f.h} fill="#d1d5db" />
-      {slots(f).map(s => <rect key={s.slot_index} x={s.x} y={s.y} width={s.width} height={s.height} fill="#6c4cf5" />)}
+    <svg width={w} height="56" viewBox={`0 0 ${f.w || 1200} ${f.h || 1800}`} style={{ borderRadius: 6, border: '1px solid var(--line)', background: '#e5e7eb', display: 'block' }}>
+      {sl.map((s, i) => (
+        <g key={i}>
+          <rect x={s.x} y={s.y} width={s.width} height={s.height} fill={PREVIEW_COLORS[s.capture % PREVIEW_COLORS.length]} />
+          <text x={s.x + s.width / 2} y={s.y + s.height / 2} textAnchor="middle" dominantBaseline="central" fontSize={Math.min(s.width, s.height) * 0.4} fill="#fff" fontWeight="700">{s.capture + 1}</text>
+        </g>
+      ))}
+      {f.asset && <image href={f.asset} width={f.w || 1200} height={f.h || 1800} />}
     </svg>
   )
 }
 
 export function Frames({ type }) {
-  const { S, update, reload } = useStore()
-  const [msg, setMsg] = useState(''), [slotFor, setSlotFor] = useState(null)
+  const { S, update } = useStore()
+  const [msg, setMsg] = useState('')
+  const [ed, setEd] = useState(null) // { frame, isNew }
+  const [q, setQ] = useState('')
+  const [sizeFilter, setSizeFilter] = useState('')
+  const [massModal, setMassModal] = useState(false)
+
   const flash = m => { setMsg(m); setTimeout(() => setMsg(''), 2500) }
-  const upload = (id, file) => {
-    if (!file) return
-    if (file.size > 8 * 1024 * 1024) return flash('Maksimal 8MB')
-    const r = new FileReader()
-    r.onload = async () => {
-      try { await api(`/frames/${id}/asset`, { method: 'POST', body: JSON.stringify({ data: r.result }) }); await reload(); flash('Aset terunggah') }
-      catch { flash('Gagal unggah') }
-    }
-    r.readAsDataURL(file)
+
+  const typeRows = S.frames.filter(f => f.type === type)
+  const shown = typeRows.filter(r => {
+    const matchName = (r.title || '').toLowerCase().includes(q.toLowerCase())
+    const sz = detectSizeLabel(r)
+    const matchSize = !sizeFilter || sz === sizeFilter
+    return matchName && matchSize
+  })
+
+  const createNew = () => {
+    setEd({
+      isNew: true,
+      frame: {
+        id: uid(),
+        type,
+        title: '',
+        sizeLabel: type === 'PHOTO' ? '2R' : 'SQUARE',
+        caps: 4,
+        w: type === 'PHOTO' ? 1200 : 1080,
+        h: type === 'PHOTO' ? 1800 : 1080,
+        active: true,
+        asset: '',
+        customSlots: []
+      }
+    })
   }
+
+  const duplicateFrame = r => {
+    const copy = {
+      ...r,
+      id: uid(),
+      title: `${r.title} (Copy)`,
+      customSlots: r.customSlots ? r.customSlots.map(s => ({ ...s })) : []
+    }
+    update({ frames: [copy, ...S.frames] })
+    flash('Frame berhasil diduplikasi')
+  }
+
+  const deleteFrame = r => {
+    if (!confirm(`Hapus frame "${r.title}"?`)) return
+    update({ frames: S.frames.filter(x => x.id !== r.id) })
+    flash('Frame dihapus')
+  }
+
+  const saveFrame = saved => {
+    const next = ed.isNew
+      ? [saved, ...S.frames]
+      : S.frames.map(f => f.id === saved.id ? saved : f)
+    update({ frames: next })
+    setEd(null)
+    flash('Frame berhasil disimpan')
+  }
+
+  // Jika sedang mode Tambah Frame / Ubah Frame, tampilkan Full-Page Editor seperti ss1 & ss2
+  if (ed) {
+    return (
+      <>
+        <SlotEditor
+          frame={ed.frame}
+          isNew={ed.isNew}
+          onClose={() => setEd(null)}
+          onSave={saveFrame}
+        />
+        {msg && <div className="toast">{msg}</div>}
+      </>
+    )
+  }
+
+  // Tampilan Daftar Frame sesuai ss b (image_eeae33.png)
   return (
-    <>
-      <Crud title={type === 'PHOTO' ? 'Frame Photo' : 'Frame GIF'} all={S.frames} rows={S.frames.filter(f => f.type === type)}
-        note="Setelah menyimpan, klik Upload PNG (area foto harus transparan), lalu Slot > Deteksi otomatis untuk membaca posisi slot dari PNG. Satu foto boleh dipakai beberapa slot (mis. strip 2 kolom)."
-        cols={[
-          { h: 'Preview', f: r => <Preview f={r} /> }, { h: 'Judul', f: r => <b>{r.title}</b> }, { h: 'Slot foto', f: r => r.caps },
-          { h: 'Kanvas', f: r => `${r.w} × ${r.h}` }, { h: 'Status', f: r => <Badge on={r.active} /> }
-        ]}
-        fields={[
-          { k: 'title', l: 'Judul frame', r: 1 }, { k: 'caps', l: 'Jumlah slot foto', t: 'number', r: 1 },
-          { k: 'w', l: 'Lebar kanvas (px)', t: 'number', r: 1 }, { k: 'h', l: 'Tinggi kanvas (px)', t: 'number', r: 1 }, { k: 'active', l: 'Aktif', t: 'check' }
-        ]}
-        defaults={() => ({ id: uid(), type, title: '', caps: 4, w: type === 'PHOTO' ? 1200 : 1080, h: type === 'PHOTO' ? 1800 : 1080, active: true })}
-        beforeSave={n => ({ ...n, caps: n.customSlots && n.customSlots.length ? Math.max(...n.customSlots.map(s => s.capture)) + 1 : Math.max(1, n.caps) })}
-        onChange={v => update({ frames: v })}
-        extra={r => (<>
-          <button className="ic" onClick={() => setSlotFor(r)}>Slot</button>
-          <label className="ic" style={{ cursor: 'pointer' }}>
-            Upload PNG<input type="file" hidden accept="image/png,image/gif" onChange={e => { upload(r.id, e.target.files[0]); e.target.value = '' }} />
-          </label></>
-        )} />
-      {slotFor && <SlotEditor frame={S.frames.find(f => f.id === slotFor.id) || slotFor} onClose={() => setSlotFor(null)} onSave={patch => { update({ frames: S.frames.map(f => f.id === slotFor.id ? { ...f, ...patch } : f) }); setSlotFor(null) }} />}
+    <div className="panel">
+      <div className="hd">
+        <h1>Daftar Frame</h1>
+        <div className="cc" style={{ flexWrap: 'wrap' }}>
+          <input
+            className="search"
+            style={{ width: 190 }}
+            placeholder="Nama Frame"
+            aria-label="Nama Frame"
+            value={q}
+            onChange={e => setQ(e.target.value)}
+          />
+          <select
+            style={{ width: 140 }}
+            value={sizeFilter}
+            onChange={e => setSizeFilter(e.target.value)}
+            aria-label="Pilih Ukuran"
+          >
+            <option value="">Pilih Ukuran</option>
+            <option value="2R">2R</option>
+            <option value="4R">4R</option>
+            <option value="A4">A4</option>
+            <option value="Square">Square</option>
+          </select>
+          <button
+            type="button"
+            className="btn ghost"
+            style={{ border: '1px solid var(--pri)', color: 'var(--pri)', background: 'transparent' }}
+            onClick={() => setMassModal(true)}
+          >
+            🥞 Tambah Frame Massal ke Kiosk
+          </button>
+          <button type="button" className="btn" onClick={createNew}>
+            + Tambah Frame
+          </button>
+        </div>
+      </div>
+
+      <div className="tw">
+        <table>
+          <thead>
+            <tr>
+              <th>Preview</th>
+              <th>Nama</th>
+              <th>Sumber</th>
+              <th>Ukuran</th>
+              <th>Jumlah Foto</th>
+              <th>Aksi</th>
+            </tr>
+          </thead>
+          <tbody>
+            {shown.map(r => {
+              const slCount = (r.customSlots && r.customSlots.length) ? r.customSlots.length : (r.caps || 0)
+              const capCount = r.caps || 0
+              return (
+                <tr key={r.id}>
+                  <td><Preview f={r} /></td>
+                  <td><b style={{ fontWeight: 500 }}>{r.title}</b></td>
+                  <td style={{ color: 'var(--mute)', fontSize: 12.5 }}>Ditambah manual</td>
+                  <td><b>{detectSizeLabel(r)}</b></td>
+                  <td><b>{capCount} / {slCount}</b></td>
+                  <td>
+                    <div className="cc" style={{ gap: 10 }}>
+                      <button
+                        type="button"
+                        className="fe-act-icon"
+                        title="Ubah Frame"
+                        onClick={() => setEd({ frame: { ...r }, isNew: false })}
+                      >
+                        ✎
+                      </button>
+                      <button
+                        type="button"
+                        className="fe-act-icon"
+                        title="Duplikasi Frame"
+                        onClick={() => duplicateFrame(r)}
+                      >
+                        ❐
+                      </button>
+                      <button
+                        type="button"
+                        className="fe-act-icon del"
+                        title="Hapus Frame"
+                        onClick={() => deleteFrame(r)}
+                      >
+                        🗑
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              )
+            })}
+            {!shown.length && (
+              <tr>
+                <td colSpan={6} className="empty">
+                  Belum ada frame. Klik + Tambah Frame untuk membuat yang pertama.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {massModal && (
+        <Modal title="Tambah Frame Massal ke Kiosk" onClose={() => setMassModal(false)}>
+          <p style={{ color: 'var(--mute)' }}>
+            Mengaktifkan seluruh frame pada daftar ini ({typeRows.length} frame) agar langsung tersinkronisasi ke semua Kiosk saat Reload Kiosk dijalankan.
+          </p>
+          <div className="cc" style={{ justifyContent: 'flex-end', marginTop: 14 }}>
+            <button type="button" className="btn ghost" onClick={() => setMassModal(false)}>Batal</button>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => {
+                update({ frames: S.frames.map(f => f.type === type ? { ...f, active: true } : f) })
+                setMassModal(false)
+                flash('Semua frame diaktifkan ke Kiosk')
+              }}
+            >
+              Terapkan ke Semua Kiosk
+            </button>
+          </div>
+        </Modal>
+      )}
+
       {msg && <div className="toast">{msg}</div>}
-    </>
+    </div>
   )
 }

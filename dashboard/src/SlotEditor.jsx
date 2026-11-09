@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { slots as autoSlots } from './utils.js'
 import { detectFromUrl } from './slotDetect.js'
 import { api } from './api.js'
@@ -14,13 +14,15 @@ export const SIZES = [
 ]
 
 export function detectSizeLabel(f) {
+  if (f.sizeLabel === 'SQUARE') return 'Square'
+  if (f.sizeLabel === 'CUSTOM') return 'Kustom'
   if (f.sizeLabel) return f.sizeLabel
   if (f.w === 2480 && f.h === 3508) return 'A4'
   if (f.w === 1080 && f.h === 1080) return 'Square'
   return '2R'
 }
 
-export default function SlotEditor({ frame, isNew, onSave, onClose }) {
+export default function SlotEditor({ frame, isNew, onSave, onClose, focusSlots = false }) {
   const initialSlots = (frame.customSlots && frame.customSlots.length
     ? frame.customSlots
     : (frame.asset ? autoSlots(frame) : [])
@@ -30,6 +32,7 @@ export default function SlotEditor({ frame, isNew, onSave, onClose }) {
   const [sizeId, setSizeId] = useState(frame.sizeLabel || (frame.w === 2480 ? 'A4' : frame.w === 1080 ? 'SQUARE' : '2R'))
   const [dim, setDim] = useState({ w: frame.w || 1200, h: frame.h || 1800 })
   const [asset, setAsset] = useState(frame.asset || '')
+  const [rawDataUrl, setRawDataUrl] = useState('')
   const [sl, setSl] = useState(initialSlots)
   const [active, setActive] = useState(frame.active ?? true)
 
@@ -48,11 +51,21 @@ export default function SlotEditor({ frame, isNew, onSave, onClose }) {
   const svgRef = useRef(null)
   const fileInputRef = useRef(null)
   const dragRef = useRef(null)
+  const slotsSectionRef = useRef(null)
+
+  useEffect(() => {
+    if (focusSlots) slotsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [focusSlots])
 
   const uniqueCaptures = [...new Set(sl.map(s => s.capture))].sort((a, b) => a - b)
   const caps = sl.length ? Math.max(...sl.map(s => s.capture)) + 1 : 0
   const col = c => COLORS[c % COLORS.length]
   const curSizeObj = SIZES.find(s => s.id === sizeId) || SIZES[0]
+
+  // Hitung dimensi eksplisit SVG di layar (max tinggi 470px) agar tidak 0x0px di Chromium
+  const maxCanvasH = 470
+  const svgRenderH = maxCanvasH
+  const svgRenderW = Math.max(120, Math.round((dim.w / dim.h) * maxCanvasH))
 
   const flash = m => { setMsg(m); setTimeout(() => setMsg(''), 4000) }
 
@@ -64,24 +77,25 @@ export default function SlotEditor({ frame, isNew, onSave, onClose }) {
   }
 
   // Upload file PNG Frame (Drag & Drop atau Pilih File) + Auto Detect
-  const handleFileUpload = file => {
+  const handleFileUpload = async file => {
     if (!file) return
+    if (file.type !== 'image/png') return flash('Pilih file PNG transparan.')
     if (file.size > 15 * 1024 * 1024) return flash('Maksimal ukuran file 15MB')
     setBusy(true)
-    const r = new FileReader()
-    r.onload = async () => {
-      const dataUrl = r.result
-      let finalUrl = dataUrl
-      try {
-        if (!isNew && frame.id) {
-          await api(`/frames/${frame.id}/asset`, { method: 'POST', body: JSON.stringify({ data: dataUrl }) })
-        } else {
-          const j = await api('/assets', { method: 'POST', body: JSON.stringify({ data: dataUrl }) })
-          if (j && j.url) finalUrl = j.url
-        }
-      } catch {
-        // Fallback ke dataUrl jika endpoint gagal
-      }
+    try {
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(reader.result)
+        reader.onerror = () => reject(reader.error || new Error('File PNG tidak dapat dibaca.'))
+        reader.readAsDataURL(file)
+      })
+      setRawDataUrl(dataUrl)
+      const result = isNew
+        ? await api('/assets', { method: 'POST', body: JSON.stringify({ data: dataUrl }) })
+        : await api(`/frames/${frame.id}/asset`, { method: 'POST', body: JSON.stringify({ data: dataUrl }) })
+      if (result.error) throw new Error(result.error)
+      const finalUrl = isNew ? result.url : result.asset
+      if (!finalUrl) throw new Error('Server tidak mengembalikan URL PNG.')
       setAsset(finalUrl)
       try {
         const det = await detectFromUrl(dataUrl)
@@ -92,20 +106,23 @@ export default function SlotEditor({ frame, isNew, onSave, onClose }) {
         } else {
           flash('Frame diunggah. Klik Deteksi Otomatis atau + Tambah Foto untuk mengatur slot.')
         }
-      } catch {
-        flash('Frame berhasil diunggah.')
+      } catch (error) {
+        flash(`PNG berhasil diunggah, tetapi gagal dianalisis: ${error.message}`)
       }
+    } catch (error) {
+      flash(`Gagal mengunggah PNG: ${error.message}`)
+    } finally {
       setBusy(false)
     }
-    r.readAsDataURL(file)
   }
 
   // Tombol Deteksi Otomatis di Toolbar
   const runAutoDetect = async () => {
-    if (!asset) return flash('Upload PNG frame terlebih dahulu!')
+    const srcToDetect = rawDataUrl || asset
+    if (!srcToDetect) return flash('Upload PNG frame terlebih dahulu!')
     setBusy(true)
     try {
-      const r = await detectFromUrl(asset)
+      const r = await detectFromUrl(srcToDetect)
       if (!r.slots.length) {
         flash('Tidak ditemukan area transparan yang cukup besar pada PNG ini.')
       } else {
@@ -113,10 +130,11 @@ export default function SlotEditor({ frame, isNew, onSave, onClose }) {
         setDim({ w: r.w, h: r.h })
         flash(`${r.slots.length} slot berhasil dideteksi (${r.caps} foto).`)
       }
-    } catch {
-      flash('Gagal mendeteksi slot dari gambar PNG.')
+    } catch (error) {
+      flash(`Gagal mendeteksi slot: ${error.message}`)
+    } finally {
+      setBusy(false)
     }
-    setBusy(false)
   }
 
   // Tambah nomor foto baru (+ Tambah Foto)
@@ -251,10 +269,12 @@ export default function SlotEditor({ frame, isNew, onSave, onClose }) {
 
   const endDrag = () => { dragRef.current = null }
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!title.trim()) return flash('Nama frame wajib diisi!')
+    setBusy(true)
     const finalCaps = sl.length ? Math.max(...sl.map(s => s.capture)) + 1 : (frame.caps || 4)
-    onSave({
+
+    const payload = {
       ...frame,
       title: title.trim(),
       sizeLabel: sizeId,
@@ -265,7 +285,15 @@ export default function SlotEditor({ frame, isNew, onSave, onClose }) {
       active,
       customSlots: sl,
       qrBox
-    })
+    }
+
+    try {
+      await onSave(payload)
+    } catch (error) {
+      flash(`Gagal menyimpan frame: ${error.message}`)
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
@@ -328,13 +356,13 @@ export default function SlotEditor({ frame, isNew, onSave, onClose }) {
               ref={fileInputRef}
               type="file"
               hidden
-              accept="image/png,image/gif,image/webp"
+              accept="image/png"
               onChange={e => { handleFileUpload(e.target.files[0]); e.target.value = '' }}
             />
 
             {!asset && !sl.length ? (
               <div className="fe-dropzone" onClick={() => fileInputRef.current?.click()}>
-                <div className="fe-drop-icon">🖼️</div>
+                <div className="fe-drop-icon"></div>
                 <b>Upload frame untuk memulai</b>
                 <span>Seret PNG ke sini, atau klik untuk pilih file.</span>
               </div>
@@ -342,6 +370,8 @@ export default function SlotEditor({ frame, isNew, onSave, onClose }) {
               <div className="fe-canvas-holder" style={{ transform: `scale(${zoom}) rotate(${rot}deg)` }}>
                 <svg
                   ref={svgRef}
+                  width={svgRenderW}
+                  height={svgRenderH}
                   viewBox={`0 0 ${dim.w} ${dim.h}`}
                   className="fe-svg"
                   role="img"
@@ -481,7 +511,7 @@ export default function SlotEditor({ frame, isNew, onSave, onClose }) {
             <div className="fld">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                 <label style={{ fontWeight: 600, color: 'var(--ink)', margin: 0 }}>Ukuran</label>
-                <span style={{ fontSize: 11, color: 'var(--pri)' }}>📏 Panduan ukuran</span>
+                <span style={{ fontSize: 11, color: 'var(--pri)' }}> Panduan ukuran</span>
               </div>
               <select value={sizeId} onChange={e => handleSizeChange(e.target.value)}>
                 {SIZES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
@@ -505,11 +535,11 @@ export default function SlotEditor({ frame, isNew, onSave, onClose }) {
             )}
 
             <div className="fe-hintbox">
-              <b>Catatan:</b> Biarkan rotasi Normal saat mengatur slot. Ganti ke rotasi target setelah selesai.
+              <b>Catatan:</b> Pastikan area foto transparan. Klik Deteksi Otomatis untuk membaca posisi slot dari PNG.
             </div>
 
             {/* BAGIAN SLOT FOTO */}
-            <div style={{ marginTop: 14 }}>
+            <div ref={slotsSectionRef} style={{ marginTop: 14 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <b style={{ fontSize: 13 }}>Slot Foto</b>
                 <span style={{ fontSize: 12, color: 'var(--mute)' }}>{sl.length} / {caps}</span>
@@ -553,7 +583,7 @@ export default function SlotEditor({ frame, isNew, onSave, onClose }) {
           {/* BAGIAN FOTO PREVIEW (MUNCUL BILA ADA SLOT) */}
           {uniqueCaptures.length > 0 && (
             <div className="fe-card">
-              <b style={{ fontSize: 13, display: 'block', marginBottom: 8 }}>🖼️ Foto Preview</b>
+              <b style={{ fontSize: 13, display: 'block', marginBottom: 8 }}> Foto Preview</b>
               <div className="fe-prev-list">
                 {uniqueCaptures.map(c => (
                   <div className="fe-prev-item" key={c}>
@@ -561,7 +591,7 @@ export default function SlotEditor({ frame, isNew, onSave, onClose }) {
                     {samplePhotos[c] ? (
                       <img src={samplePhotos[c]} alt="" className="fe-pthumb" />
                     ) : (
-                      <div className="fe-pthumb empty">🖼️</div>
+                      <div className="fe-pthumb empty"></div>
                     )}
                     <label className="fe-plink">
                       Upload foto

@@ -26,6 +26,16 @@ export default function App() {
     if (!k.token) { toast(k.lang === 'EN' ? 'Activate the kiosk first (App Setting)' : 'Aktivasi kiosk dulu (App Setting)'); return }
     try {
       const j = await doSync(k); setSync(j)
+      const settings = j.kiosk_settings || {}, camera = settings.camera || {}, payment = settings.payment || {}
+      const remote = {}
+      if (settings.general && settings.general.pin != null) remote.pin = settings.general.pin
+      if (camera.mode) remote.camBrand = camera.mode
+      if (camera.driver) remote.camDriver = camera.driver
+      if (camera.cameraOrientation) remote.orient = camera.cameraOrientation
+      if (camera.previewMirror != null) remote.mirrorPrev = camera.previewMirror
+      if (camera.resultMirror != null) remote.mirrorRes = camera.resultMirror
+      if (payment.copies) remote.copies = Math.max(1, Number(/\(x(\d+)\)/i.exec(payment.copies)?.[1]) || 1)
+      if (Object.entries(remote).some(([key, value]) => cfgRef.current[key] !== value)) patchCfg(remote)
       if (j.kiosk_info.id !== k.kioskId) patchCfg({ kioskId: j.kiosk_info.id })
       if (manual) toast(k.lang === 'EN' ? 'Sync complete' : 'Sinkronisasi selesai')
     } catch (e) { toast((k.lang === 'EN' ? 'Sync failed: ' : 'Sync gagal: ') + (e.error || e.message || '')) }
@@ -38,7 +48,7 @@ export default function App() {
     const cam = async () => { try { N.report({ cameraConnected: (await navigator.mediaDevices.enumerateDevices()).some(d => d.kind === 'videoinput') }) } catch { /* abaikan */ } }
     cam(); const t = setInterval(cam, 15000)
     const off1 = N.on('rdm:reload', () => reload(false))                                    // perintah RDM dari dashboard
-    const off2 = N.on('rdm:config', p => setSync(s => s && { ...s, softfile_ui: p.softfile_ui || s.softfile_ui, price: p.price ?? s.price }))
+    const off2 = N.on('rdm:config', () => reload(false))
     return () => { clearInterval(t); off1(); off2() }
   }, [reload])
 

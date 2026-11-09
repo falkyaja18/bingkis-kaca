@@ -21,7 +21,7 @@ export default function Select({ frame, frameUrl, shots, onPrint, onCancel }) {
   const place = slot => { if (!pick) return; setAssign(a => a.map((x, i) => i === slot.capture ? pick : x)); setPick(null) }
   const print = () => {
     const used = new Set(assign)
-    onPrint({ raws: assign.map(id => byId(id).data), extras: cand.filter(c => !used.has(c.id)).map(c => c.data), live: shots.live })
+    onPrint({ raws: assign.map(id => byId(id).data), extras: cand.filter(c => !used.has(c.id)).map(c => c.data), live: shots.live, photoFilter: shots.photoFilter })
   }
   return (
     <div className="selwrap">
@@ -34,7 +34,10 @@ export default function Select({ frame, frameUrl, shots, onPrint, onCancel }) {
         </div>
       </div>
       <div className="selside">
-        <div className="hint">{pick ? L('Now touch a slot on the strip', 'Sekarang sentuh slot di strip') : L('Touch a photo to swap it into a slot', 'Sentuh foto untuk menukar ke slot')}</div>
+        <div className="hint">
+          {pick ? L('Now touch a slot on the strip', 'Sekarang sentuh slot di strip') : L('Touch a photo to swap it into a slot', 'Sentuh foto untuk menukar ke slot')}
+          {shots.photoFilter && <small className="km-filter-applied">{L('Filter applied: ', 'Filter aktif: ')}{shots.photoFilter}</small>}
+        </div>
         <div className="cands">{cand.map(c => <button key={c.id} className={'cand' + (pick === c.id ? ' on' : '')} onClick={() => { setTab('foto'); setPick(pick === c.id ? null : c.id) }} aria-label="Foto"><img src={c.url} alt="" /></button>)}</div>
         <button className="btnw pri" onClick={print}>Print</button>
         <button className="btnw" onClick={() => { setAssign(initial); setPick(null) }}>Reset</button>

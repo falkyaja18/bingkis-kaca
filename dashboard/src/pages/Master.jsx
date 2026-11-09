@@ -1,75 +1,14 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import Crud, { Modal, Badge } from '../Crud.jsx'
 import SlotEditor, { detectSizeLabel } from '../SlotEditor.jsx'
 import { useStore } from '../store.jsx'
 import { api } from '../api.js'
-import { useHealth, ago } from '../health.js'
+import { detectFromUrl } from '../slotDetect.js'
 import { uid, rp, fd, slots } from '../utils.js'
 
+export { default as Kiosks } from './KioskMaster.jsx'
+
 const kname = (S, id) => (S.kiosks.find(k => k.id === id) || {}).name || '-'
-
-/* ---------- Kiosk ---------- */
-const RDM = [
-  ['rdm:kiosk:test_print', 'Test Print'], ['rdm:kiosk:last_print', 'Last Print'], ['rdm:kiosk:camera_test', 'Camera Test'],
-  ['rdm:kiosk:reload', 'Reload Kiosk'], ['rdm:kiosk:force_sync', 'Force Sync'], ['rdm:kiosk:minimize', 'Minimize Kiosk']
-]
-
-function Control({ kiosk, online, onClose }) {
-  const [log, setLog] = useState([])
-  const [busy, setBusy] = useState('')
-  const run = async (ev, label) => {
-    setBusy(ev)
-    const r = await api(`/kiosks/${kiosk.id}/command`, { method: 'POST', body: JSON.stringify({ event: ev, payload: {} }) }).catch(e => ({ ok: false, error: String(e.message) }))
-    setLog(l => [{ label, ok: r.ok, out: r.ok ? JSON.stringify(r.result.result ?? r.result) : r.error, t: new Date().toLocaleTimeString('id-ID') }, ...l]); setBusy('')
-  }
-  return (
-    <Modal title={'Kontrol jarak jauh - ' + kiosk.name} onClose={onClose}>
-      {!online && <div className="note">Kiosk sedang offline. Perintah hanya bisa dikirim saat kiosk terhubung (WebSocket).</div>}
-      <div className="cmds">{RDM.map(([ev, l]) => <button key={ev} className="btn" disabled={!online || !!busy} onClick={() => run(ev, l)}>{busy === ev ? '…' : l}</button>)}</div>
-      {log.map((x, i) => <div key={i} className="hrow"><span className={'pill ' + (x.ok ? 'ok' : 'bad')}>{x.ok ? 'OK' : 'Gagal'}</span><b>{x.label}</b><span className="sp" /><span style={{ color: 'var(--mute)' }}>{x.t}</span><code style={{ width: '100%', wordBreak: 'break-all' }}>{x.out}</code></div>)}
-      <div className="cc" style={{ justifyContent: 'flex-end', marginTop: 10 }}><button className="btn ghost" onClick={onClose}>Tutup</button></div>
-    </Modal>
-  )
-}
-
-export function Kiosks() {
-  const { S, update } = useStore()
-  const { health } = useHealth()
-  const [view, setView] = useState(null), [ctl, setCtl] = useState(null)
-  const hl = id => health.find(h => h.id === id) || {}
-  const preview = k => ({
-    status: 'success',
-    kiosk_info: { id: k.id, name: k.name, language: k.lang, active_public_gallery: S.galleries.find(g => g.kiosk === k.id && g.active) || null },
-    frames: S.frames.filter(f => f.active).map(f => ({ id: f.id, title: f.title, type: f.type, asset_url: f.asset || '', slots_config: { canvas_width: f.w, canvas_height: f.h, total_captures: f.caps, slots: slots(f) } })),
-    softfile_ui: S.soft
-  })
-  return (
-    <>
-      <Crud title="Kiosk" all={S.kiosks} rows={S.kiosks}
-        note="Kiosk memakai kode aktivasi ini di App Setting, lalu menarik data master lewat Reload Kiosk. Tombol Kontrol mengirim perintah jarak jauh (RDM) lewat WebSocket."
-        cols={[
-          { h: 'Nama', f: r => <b>{r.name}</b> }, { h: 'Cabang', f: r => (S.branches.find(b => b.id === r.branch) || {}).name || '-' },
-          { h: 'Kode aktivasi', f: r => <code>{r.code}</code> },
-          { h: 'Status', f: r => <span className={'pill ' + (hl(r.id).online ? 'ok' : 'bad')}>{hl(r.id).online ? 'Online' : 'Offline'}</span> },
-          { h: 'Versi', f: r => <span className="mono">{hl(r.id).appVersion || '-'}</span> },
-          { h: 'Aktivasi', f: r => <Badge on={r.activated} yes="Activated" no="Belum aktif" /> },
-          { h: 'Terlihat', f: r => ago(hl(r.id).lastSeen) }
-        ]}
-        fields={[{ k: 'name', l: 'Nama kiosk', r: 1 }, { k: 'branch', l: 'Cabang', t: 'select', o: [['', '-'], ...S.branches.map(b => [b.id, b.name])] }, { k: 'lang', l: 'Bahasa', t: 'select', o: ['ID', 'EN'] }, { k: 'code', l: 'Kode aktivasi', r: 1 }]}
-        defaults={() => ({ id: uid(), name: '', branch: '', lang: 'ID', code: 'KS-' + uid().toUpperCase().slice(0, 4), activated: false, lastSync: '' })}
-        onChange={v => update({ kiosks: v })}
-        extra={r => <><button className="ic" onClick={() => setCtl(r)}>Kontrol</button><button className="ic" onClick={() => setView(r)}>Lihat sync</button></>} />
-      {ctl && <Control kiosk={ctl} online={!!hl(ctl.id).wsConnected} onClose={() => setCtl(null)} />}
-      {view && (
-        <Modal title="GET /api/v1/kiosk/sync" onClose={() => setView(null)}>
-          <p style={{ color: 'var(--mute)' }}>Contoh respons yang diterima {view.name} saat Reload Kiosk.</p>
-          <pre>{JSON.stringify(preview(view), null, 2)}</pre>
-          <div className="cc" style={{ justifyContent: 'flex-end' }}><button className="btn" onClick={() => setView(null)}>Tutup</button></div>
-        </Modal>
-      )}
-    </>
-  )
-}
 
 /* ---------- Branch Manager ---------- */
 export function Branches() {
@@ -165,6 +104,9 @@ export function Frames({ type }) {
   const [q, setQ] = useState('')
   const [sizeFilter, setSizeFilter] = useState('')
   const [massModal, setMassModal] = useState(false)
+  const [uploading, setUploading] = useState('')
+  const uploadInputRef = useRef(null)
+  const uploadTargetRef = useRef(null)
 
   const flash = m => { setMsg(m); setTimeout(() => setMsg(''), 2500) }
 
@@ -202,22 +144,68 @@ export function Frames({ type }) {
       customSlots: r.customSlots ? r.customSlots.map(s => ({ ...s })) : []
     }
     update({ frames: [copy, ...S.frames] })
-    flash('Frame berhasil diduplikasi')
+      .then(() => flash('Frame berhasil diduplikasi'))
+      .catch(error => flash(`Gagal menduplikasi frame: ${error.message}`))
   }
 
-  const deleteFrame = r => {
+  const deleteFrame = async r => {
     if (!confirm(`Hapus frame "${r.title}"?`)) return
-    update({ frames: S.frames.filter(x => x.id !== r.id) })
-    flash('Frame dihapus')
+    try {
+      await update({ frames: S.frames.filter(x => x.id !== r.id) })
+      flash('Frame dihapus')
+    } catch (error) {
+      flash(`Gagal menghapus frame: ${error.message}`)
+    }
   }
 
-  const saveFrame = saved => {
+  const saveFrame = async saved => {
     const next = ed.isNew
       ? [saved, ...S.frames]
       : S.frames.map(f => f.id === saved.id ? saved : f)
-    update({ frames: next })
+    await update({ frames: next })
     setEd(null)
     flash('Frame berhasil disimpan')
+  }
+
+  const uploadFrame = async file => {
+    const target = uploadTargetRef.current
+    uploadTargetRef.current = null
+    if (!file || !target) return
+    if (file.type !== 'image/png') return flash('Pilih file PNG transparan.')
+    if (file.size > 15 * 1024 * 1024) return flash('Maksimal ukuran file 15MB.')
+    setUploading(target.id)
+    try {
+      const data = await new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(reader.result)
+        reader.onerror = () => reject(reader.error || new Error('File PNG tidak dapat dibaca.'))
+        reader.readAsDataURL(file)
+      })
+      const image = await detectFromUrl(data)
+      const result = await api(`/frames/${target.id}/asset`, {
+        method: 'POST',
+        body: JSON.stringify({ data })
+      })
+      if (result.error || !result.asset) throw new Error(result.error || 'Server tidak mengembalikan URL PNG.')
+      const frames = S.frames.map(frame => frame.id === target.id
+        ? { ...frame, asset: result.asset, w: image.w, h: image.h }
+        : frame)
+      await update({ frames })
+      flash(`PNG berhasil diunggah untuk "${target.title}". Atur slot melalui tombol Slot.`)
+    } catch (error) {
+      flash(`Gagal mengunggah PNG: ${error.message}`)
+    } finally {
+      setUploading('')
+    }
+  }
+
+  const toggleFrameStatus = async frame => {
+    try {
+      await update({ frames: S.frames.map(item => item.id === frame.id ? { ...item, active: !item.active } : item) })
+      flash(`Frame ${frame.active ? 'dinonaktifkan' : 'diaktifkan'}.`)
+    } catch (error) {
+      flash(`Gagal mengubah status frame: ${error.message}`)
+    }
   }
 
   // Jika sedang mode Tambah Frame / Ubah Frame, tampilkan Full-Page Editor seperti ss1 & ss2
@@ -227,6 +215,7 @@ export function Frames({ type }) {
         <SlotEditor
           frame={ed.frame}
           isNew={ed.isNew}
+          focusSlots={ed.focusSlots}
           onClose={() => setEd(null)}
           onSave={saveFrame}
         />
@@ -235,17 +224,16 @@ export function Frames({ type }) {
     )
   }
 
-  // Tampilan Daftar Frame sesuai ss b (image_eeae33.png)
   return (
     <div className="panel">
       <div className="hd">
-        <h1>Daftar Frame</h1>
+        <h1>{type === 'PHOTO' ? 'Frame Photo' : 'Frame GIF'}</h1>
         <div className="cc" style={{ flexWrap: 'wrap' }}>
           <input
             className="search"
             style={{ width: 190 }}
-            placeholder="Nama Frame"
-            aria-label="Nama Frame"
+            placeholder="Cari..."
+            aria-label="Cari frame"
             value={q}
             onChange={e => setQ(e.target.value)}
           />
@@ -260,6 +248,7 @@ export function Frames({ type }) {
             <option value="4R">4R</option>
             <option value="A4">A4</option>
             <option value="Square">Square</option>
+            <option value="Kustom">Kustom</option>
           </select>
           <button
             type="button"
@@ -267,63 +256,94 @@ export function Frames({ type }) {
             style={{ border: '1px solid var(--pri)', color: 'var(--pri)', background: 'transparent' }}
             onClick={() => setMassModal(true)}
           >
-            🥞 Tambah Frame Massal ke Kiosk
+            Tambah Frame Massal ke Kiosk
           </button>
           <button type="button" className="btn" onClick={createNew}>
-            + Tambah Frame
+            + Tambah
           </button>
         </div>
       </div>
 
+      <div className="note">
+        Setelah menyimpan, unggah PNG dengan area foto transparan. Buka Slot lalu klik Deteksi Otomatis untuk membaca posisi slot dari PNG. Satu foto dapat digunakan di beberapa slot.
+      </div>
+      <input
+        ref={uploadInputRef}
+        type="file"
+        accept="image/png"
+        hidden
+        onChange={e => {
+          uploadFrame(e.target.files[0])
+          e.target.value = ''
+        }}
+      />
       <div className="tw">
         <table>
           <thead>
             <tr>
               <th>Preview</th>
-              <th>Nama</th>
-              <th>Sumber</th>
-              <th>Ukuran</th>
-              <th>Jumlah Foto</th>
+              <th>Judul</th>
+              <th>Slot foto</th>
+              <th>Kanvas</th>
+              <th>Status</th>
               <th>Aksi</th>
             </tr>
           </thead>
           <tbody>
             {shown.map(r => {
-              const slCount = (r.customSlots && r.customSlots.length) ? r.customSlots.length : (r.caps || 0)
-              const capCount = r.caps || 0
+              const frameSlots = r.customSlots?.length ? r.customSlots : slots(r)
+              const captureCount = new Set(frameSlots.map(slot => slot.capture ?? 0)).size
               return (
                 <tr key={r.id}>
                   <td><Preview f={r} /></td>
                   <td><b style={{ fontWeight: 500 }}>{r.title}</b></td>
-                  <td style={{ color: 'var(--mute)', fontSize: 12.5 }}>Ditambah manual</td>
-                  <td><b>{detectSizeLabel(r)}</b></td>
-                  <td><b>{capCount} / {slCount}</b></td>
+                  <td><b>{frameSlots.length} / {captureCount}</b></td>
+                  <td>{r.w || 1200} × {r.h || 1800}</td>
                   <td>
-                    <div className="cc" style={{ gap: 10 }}>
+                    <button
+                      type="button"
+                      className={'fe-status' + (r.active ? ' on' : '')}
+                      aria-label={`${r.active ? 'Nonaktifkan' : 'Aktifkan'} frame ${r.title}`}
+                      onClick={() => toggleFrameStatus(r)}
+                    >
+                      {r.active ? 'Aktif' : 'Nonaktif'}
+                    </button>
+                  </td>
+                  <td>
+                    <div className="cc fe-actions">
                       <button
                         type="button"
-                        className="fe-act-icon"
-                        title="Ubah Frame"
+                        className="ic"
+                        onClick={() => setEd({ frame: { ...r }, isNew: false, focusSlots: true })}
+                      >
+                        Slot
+                      </button>
+                      <button
+                        type="button"
+                        className="ic"
+                        disabled={uploading === r.id}
+                        onClick={() => {
+                          uploadTargetRef.current = r
+                          uploadInputRef.current?.click()
+                        }}
+                      >
+                        {uploading === r.id ? 'Mengunggah...' : 'Upload PNG'}
+                      </button>
+                      <button
+                        type="button"
+                        className="ic"
                         onClick={() => setEd({ frame: { ...r }, isNew: false })}
                       >
-                        ✎
+                        Ubah
                       </button>
                       <button
                         type="button"
-                        className="fe-act-icon"
-                        title="Duplikasi Frame"
-                        onClick={() => duplicateFrame(r)}
-                      >
-                        ❐
-                      </button>
-                      <button
-                        type="button"
-                        className="fe-act-icon del"
-                        title="Hapus Frame"
+                        className="ic del"
                         onClick={() => deleteFrame(r)}
                       >
-                        🗑
+                        Hapus
                       </button>
+                      <button type="button" className="ic" title="Duplikasi Frame" onClick={() => duplicateFrame(r)}>Duplikasi</button>
                     </div>
                   </td>
                 </tr>
@@ -350,10 +370,14 @@ export function Frames({ type }) {
             <button
               type="button"
               className="btn"
-              onClick={() => {
-                update({ frames: S.frames.map(f => f.type === type ? { ...f, active: true } : f) })
-                setMassModal(false)
-                flash('Semua frame diaktifkan ke Kiosk')
+              onClick={async () => {
+                try {
+                  await update({ frames: S.frames.map(f => f.type === type ? { ...f, active: true } : f) })
+                  setMassModal(false)
+                  flash('Semua frame diaktifkan ke Kiosk')
+                } catch (error) {
+                  flash(`Gagal mengaktifkan frame: ${error.message}`)
+                }
               }}
             >
               Terapkan ke Semua Kiosk

@@ -75,7 +75,11 @@ function sendCmd(kid, event, payload, timeout = 20000) {
     l.ws.send(JSON.stringify({ cmdId, event, payload: payload || {} }));
   });
 }
-const pushConfig = () => live.forEach(l => { if (l.ws && l.ws.readyState === 1) l.ws.send(JSON.stringify({ event: 'rdm:kiosk:update_config', payload: { softfile_ui: S.soft, price: S.pay.price } })); });
+const pushConfig = () => live.forEach((l, id) => {
+  const k = S.kiosks.find(x => x.id === id);
+  if (k && l.ws && l.ws.readyState === 1)
+    l.ws.send(JSON.stringify({ event: 'rdm:kiosk:update_config', payload: { refresh: true } }));
+});
 
 /* ================= ADMIN ================= */
 const tokens = new Set();
@@ -96,7 +100,15 @@ app.put('/api/v1/admin/master', adm, (req, res) => {
   ['branches', 'kiosks', 'galleries', 'frames', 'vouchers'].forEach(k => {
     if (!Array.isArray(b[k])) return;
     const old = Object.fromEntries((S[k] || []).map(x => [x.id, x]));
-    S[k] = b[k].map(n => { n.id = clean(n.id) || uid(); const o = old[n.id]; (OWN[k] || []).forEach(f => { n[f] = o ? o[f] : (f in OWN_DEF ? OWN_DEF[f] : ''); }); return n; });
+    S[k] = b[k].map(n => {
+      n.id = clean(n.id) || uid();
+      const o = old[n.id];
+      (OWN[k] || []).forEach(f => {
+        if (k === 'frames' && (f === 'asset' || f === 'checksum') && n[f]) return; // Pertahankan asset/checksum jika dikirim dari SlotEditor/duplikasi
+        n[f] = o ? o[f] : (f in OWN_DEF ? OWN_DEF[f] : '');
+      });
+      return n;
+    });
   });
   if (b.soft) S.soft = b.soft;
   if (b.pay) S.pay = b.pay;
@@ -109,7 +121,7 @@ app.post('/api/v1/admin/frames/:id/asset', adm, (req, res) => {
   fs.readdirSync(dir).filter(n => n.startsWith(f.id + '.')).forEach(n => fs.unlinkSync(path.join(dir, n)));
   fs.writeFileSync(path.join(dir, f.id + '.' + ext), buf);
   f.checksum = crypto.createHash('md5').update(buf).digest('hex'); f.asset = `/uploads/frames/${f.id}.${ext}?v=${f.checksum}`;
-  save(); res.json({ asset: f.asset });
+  save(); res.json({ asset: f.asset, checksum: f.checksum });
 });
 // Upload aset tema event (gambar background, video idle, logo). Mengembalikan URL bertanda checksum.
 const MIME = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif', 'video/mp4': 'mp4', 'video/webm': 'webm' };
@@ -145,11 +157,14 @@ const kau = (req, res, next) => {
 app.post(K + '/heartbeat', kau, (req, res) => { touch(req.k.id, req.body || {}); res.json({ ok: true }); }); // cadangan bila WebSocket tidak tersedia
 app.get(K + '/sync', kau, (req, res) => {
   const k = req.k, now = Date.now(); k.lastSync = new Date().toISOString(); touch(k.id); save();
-  const g = S.galleries.find(g => g.kiosk === k.id && g.active && new Date(g.start) <= now && now <= new Date(g.end)) || null;
+  const g = S.galleries.find(g => g.kiosk === k.id && g.active && (!g.start || new Date(g.start) <= now) && (!g.end || now <= new Date(g.end))) || null;
+  const settings = k.settings || {}, selectedFrames = settings.frames && Array.isArray(settings.frames.selectedIds)
+    ? new Set(settings.frames.selectedIds) : null;
+  const payment = settings.payment || {}, price = Number.isFinite(Number(payment.price)) ? Number(payment.price) : S.pay.price;
   res.json({
-    status: 'success', price: S.pay.price,
+    status: 'success', price, kiosk_settings: settings,
     kiosk_info: { id: k.id, name: k.name, language: k.lang, active_public_gallery: g && { id: g.id, event_name: g.name, public_url: '/e/' + g.slug, active_until: g.until } },
-    frames: S.frames.filter(f => f.active).map(f => ({ id: f.id, title: f.title, type: f.type, asset_url: f.asset || '', checksum_md5: f.checksum || '',
+    frames: S.frames.filter(f => f.active && (!selectedFrames || selectedFrames.has(f.id))).map(f => ({ id: f.id, title: f.title, type: f.type, asset_url: f.asset || '', checksum_md5: f.checksum || '',
       slots_config: { canvas_width: f.w, canvas_height: f.h, total_captures: f.caps, slots: slots(f) } })),
     softfile_ui: S.soft,
     event_theme: g && { background_url: g.bg || '', idle_video_url: g.idle || '', logo_url: g.logo || '', accent: g.accent || '', start_text: g.startText || '', footer_text: g.footerText || '' }
@@ -160,11 +175,15 @@ const vfind = c => { const v = S.vouchers.find(v => v.code === String(c || '').t
 const disc = (v, p) => v.dtype === 'PERCENTAGE' ? Math.round(p * v.val / 100) : v.dtype === 'FIXED' ? Math.min(v.val, p) : p;
 app.post(K + '/vouchers/validate', kau, (req, res) => {
   const v = vfind((req.body || {}).code); if (!v) return res.json({ valid: false });
-  const p = S.pay.price, d = disc(v, p); res.json({ valid: true, discount_type: v.dtype, discount_amount: d, final_amount: p - d });
+  const configuredPrice = Number(req.k.settings?.payment?.price), p = Number.isFinite(configuredPrice) ? configuredPrice : S.pay.price;
+  const d = disc(v, p); res.json({ valid: true, discount_type: v.dtype, discount_amount: d, final_amount: p - d });
 });
 // CATATAN: QRIS masih SIMULASI (langsung PAID). Sambungkan payment gateway di endpoint ini.
 app.post(K + '/transactions', kau, (req, res) => {
-  const b = req.body || {}, p = S.pay.price; let v = null, d = 0;
+  const b = req.body || {}, payment = req.k.settings?.payment || {}, configuredPrice = Number(payment.price);
+  const p = Number.isFinite(configuredPrice) ? configuredPrice : S.pay.price; let v = null, d = 0;
+  if (payment.disablePaywall) return res.status(409).json({ error: 'Pembayaran tidak diperlukan untuk kiosk ini' });
+  if (payment.voucherOnly && !b.voucherCode) return res.status(400).json({ error: 'Kiosk ini hanya menerima voucher' });
   if (b.voucherCode) { v = vfind(b.voucherCode); if (!v) return res.status(400).json({ error: 'Voucher tidak valid' }); d = disc(v, p); v.used++; }
   const t = { id: uid(), inv: 'INV-' + String(S.trx.length + 1).padStart(4, '0'), kiosk: req.k.id, gallery: b.galleryId || null, voucher: v ? v.id : null,
     method: p - d === 0 ? 'VOUCHER' : 'QRIS', base: p, disc: d, status: 'PAID', at: new Date().toISOString() };
@@ -207,7 +226,7 @@ app.post('/api/v1/sync/failsave-ingest', kau, upl.fields([{ name: 'photo', maxCo
       base: pd.amount, disc: 0, status: 'PAID', at: m.timestamp || new Date().toISOString(), client: m.transactionUuid };
     S.trx.unshift(t); trxId = t.id;
   }
-  saveSession(req.k, { code, galleryId: m.galleryId, trxId, composite: photo.buffer, gif: f.gif && f.gif[0].buffer, live: f.live && f.live[0].buffer, raws: (f.raws || []).map(x => x.buffer), extras: (f.extras || []).map(x => x.buffer), prints: m.printCount, createdAt: m.timestamp });
+  saveSession(req.k, { code, galleryId: m.galleryId, composite: photo.buffer, gif: f.gif && f.gif[0].buffer, live: f.live && f.live[0].buffer, raws: (f.raws || []).map(x => x.buffer), extras: (f.extras || []).map(x => x.buffer), prints: m.printCount, createdAt: m.timestamp });
   res.json({ acknowledged: true, url: '/s/' + code });
 });
 

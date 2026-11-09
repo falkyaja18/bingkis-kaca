@@ -60,9 +60,9 @@ async function finalizeSession(p) {
   }
   const sc = p.frame.slots_config, frameFile = ['png', 'gif'].map(e => path.join(P.frames, p.frame.id + '.' + e)).find(f => fs.existsSync(f))
   const printOut = path.join(P.print, `tx_${code}_print.jpg`), gifOut = path.join(P.print, `tx_${code}_strip.gif`)
-  const opt = { mirror: cfg.mirrorRes, rot180: cfg.rot180 }
+  const opt = { mirror: cfg.mirrorRes, rot180: cfg.rot180, effect: p.photoFilter }
   // webcam sudah ditransformasi di renderer; DSLR (path) ditransformasi di ffmpeg. Untuk sederhana: terapkan hanya jika semua raw berasal dari path.
-  const apply = pathRaws.size === raws.length ? opt : {}
+  const apply = { ...(pathRaws.size === raws.length ? opt : {}), effect: p.photoFilter }
   await ff.composite(FF(), { raws, slots: sc.slots, w: sc.canvas_width, h: sc.canvas_height, frame: frameFile && path.extname(frameFile) === '.png' ? frameFile : null, out: printOut, ...apply })
   let gif = null
   try { await ff.makeGif(FF(), { raws, out: gifOut, ...apply }); gif = gifOut } catch (e) { log('gif gagal', e.message) }

@@ -14,10 +14,32 @@ const rp = n => 'Rp' + Number(n || 0).toLocaleString('id-ID')
 export default function Customer() {
   const { cfg, sync, L, toast } = useK()
   const et = (sync && sync.event_theme) || {}, tl = (sync && sync.theme_local) || {}, fl = (sync && sync.frame_local) || {}
+  const kioskSettings = (sync && sync.kiosk_settings) || {}
+  const display = kioskSettings.display || {}, payment = kioskSettings.payment || {}, timer = kioskSettings.timer || {}
+  const kioskAssets = (sync && sync.kiosk_assets_local) || {}
+  const customDisplay = display.layout !== 'default'
   const frames = sync ? sync.frames.filter(f => f.type === 'PHOTO') : []
+  const categories = kioskSettings.categories || []
   const gal = sync && sync.kiosk_info.active_public_gallery
-  const home = tl.idle ? 'idle' : 'pick'
-  const [step, setStep] = useState(home), [fi, setFi] = useState(0), [frame, setFrame] = useState(null), [trx, setTrx] = useState(null)
+
+  const resolveUrl = raw => {
+    if (!raw) return ''
+    if (raw.startsWith('http') || raw.startsWith('data:') || raw.startsWith('file:') || raw.startsWith('blob:')) return raw
+    return (cfg.server || '').replace(/\/$/, '') + (raw.startsWith('/') ? raw : '/' + raw)
+  }
+
+  const resolveFrameUrl = f => {
+    if (!f) return ''
+    return fl[f.id] || resolveUrl(f.asset_url || f.asset || '')
+  }
+
+  const idleUrl = (customDisplay && kioskAssets.kiosk_idle) || tl.idle || resolveUrl(et.idle_video_url || '')
+  const bgUrl = customDisplay ? '' : tl.bg || resolveUrl(et.background_url || '')
+  const logoUrl = tl.logo || resolveUrl(et.logo_url || '')
+  const welcomeUrl = customDisplay ? kioskAssets.kiosk_welcome || '' : ''
+
+  const home = idleUrl || welcomeUrl || (customDisplay && display.welcomeText) ? 'idle' : 'pick'
+  const [step, setStep] = useState(home), [fi, setFi] = useState(0), [categoryId, setCategoryId] = useState(''), [frame, setFrame] = useState(null), [trx, setTrx] = useState(null)
   const [voucher, setVoucher] = useState(''), [shots, setShots] = useState(null), [done, setDone] = useState(null), [vc, setVc] = useState('')
   const code = useRef(newCode()), last = useRef(Date.now())
 
@@ -26,11 +48,11 @@ export default function Customer() {
     const t = setInterval(() => { if (step !== home && step !== 'busy' && Date.now() - last.current > 120000) reset() }, 5000)
     return () => clearInterval(t)
   }, [step, home])
-  useEffect(() => { if (step === 'done') { const t = setTimeout(reset, 60000); return () => clearTimeout(t) } }, [step])
+  useEffect(() => { if (step === 'done') { const t = setTimeout(reset, Math.max(1, Number(timer.qr) || 80) * 1000); return () => clearTimeout(t) } }, [step, timer.qr])
 
   const choose = f => {
     setFrame(f)
-    if (cfg.mode === 'event') return setStep('cam')                      // Event Mode: tanpa pembayaran
+    if (cfg.mode === 'event' || payment.disablePaywall) return setStep('cam')
     if (!navigator.onLine) { toast(L('Offline: use Event Mode in App Setting', 'Offline: pakai Event Mode di App Setting')); return }
     setStep('pay')
   }
@@ -42,14 +64,19 @@ export default function Customer() {
     } catch (e) { toast(e.error || 'Error') }
   }
   const useVoucher = async () => {
-    const r = await kapi(cfg, '/vouchers/validate', { method: 'POST', body: JSON.stringify({ code: vc }) }), j = await r.json()
-    if (!j.valid) return toast(L('Invalid voucher', 'Voucher tidak valid'))
-    toast('Total: ' + rp(j.final_amount)); pay({ voucherCode: vc }, vc)
+    try {
+      const r = await kapi(cfg, '/vouchers/validate', { method: 'POST', body: JSON.stringify({ code: vc }) }), j = await r.json()
+      if (!r.ok) throw j
+      if (!j.valid) return toast(L('Invalid voucher', 'Voucher tidak valid'))
+      toast('Total: ' + rp(j.final_amount)); pay({ voucherCode: vc }, vc)
+    } catch (error) {
+      toast(error.error || error.message || 'Voucher tidak dapat diperiksa.')
+    }
   }
-  const print = async ({ raws, extras, live }) => {
+  const print = async ({ raws, extras, live, photoFilter }) => {
     setStep('busy')
     try {
-      const res = await N.session.finalize({ code: code.current, frame, raws, extras, live, galleryId: gal ? gal.id : null, trx: trx && { ...trx, voucherCode: voucher } })
+      const res = await N.session.finalize({ code: code.current, frame, raws, extras, live, photoFilter, galleryId: gal ? gal.id : null, trx: trx && { ...trx, voucherCode: voucher } })
       const q = qrcode(0, 'M'); q.addData(cfg.server + '/s/' + code.current); q.make()
       setDone({ composite: res.composite, qr: q.createDataURL(8) }); setStep('done')
     } catch (e) { toast(String(e.message || e)); reset() }
@@ -61,26 +88,53 @@ export default function Customer() {
       <p>{L('Open the admin panel (top-right button) and run Reload Kiosk.', 'Buka panel admin (tombol kanan atas) lalu jalankan Reload Kiosk.')}</p>
     </div></div></div>
   )
-  const cur = frames[Math.min(fi, frames.length - 1)]
-  const bg = tl.bg ? { backgroundImage: `url("${tl.bg}")` } : {}
-  return (
-    <div className="stage" style={{ ...bg, '--accent': et.accent || '#6c4cf5' }} onPointerDown={() => { last.current = Date.now() }}>
-      {step === 'idle' && tl.idle && <video className="bgv" src={tl.idle} autoPlay loop muted playsInline />}
-      {tl.logo && <img className="lg-tl" src={tl.logo} alt="" />}
-      {et.footer_text && <div className="ft-b">{et.footer_text}</div>}
+  const bg = bgUrl ? { backgroundImage: `url("${bgUrl}")` } : {}
+  const isVideoIdle = idleUrl && (idleUrl.startsWith('data:video') || /\.(mp4|webm)(\?.*)?$/i.test(idleUrl))
+  const visibleFrames = categoryId
+    ? frames.filter(f => (categories.find(category => category.id === categoryId)?.frameIds || []).includes(f.id))
+    : frames
+  const selectedFrame = visibleFrames[Math.min(fi, visibleFrames.length - 1)] || null
+  const startText = (customDisplay && display.welcomeText) || et.start_text || L('Touch to start', 'Sentuh layar untuk memulai')
+  const footerText = (customDisplay && display.footerText) || et.footer_text
+  const pageStyle = {
+    ...bg,
+    backgroundColor: (customDisplay && display.backgroundColor) || '#1b1d22',
+    color: (customDisplay && display.textColor) || '#ffffff',
+    '--accent': et.accent || '#6c4cf5',
+    '--customer-text': (customDisplay && display.textColor) || '#ffffff'
+  }
 
-      {step === 'idle' && <button className="tap" onClick={() => setStep('pick')}>{L('Touch to start', 'Sentuh layar untuk memulai')}</button>}
+  return (
+    <div className={`stage${display.displayOrientation === 'portrait' ? ' display-portrait' : ''}`} style={pageStyle} onPointerDown={() => { last.current = Date.now() }}>
+      {step === 'idle' && idleUrl && (
+        isVideoIdle
+          ? <video className="bgv" src={idleUrl} autoPlay loop muted playsInline />
+          : <img className="bgv" src={idleUrl} alt="Waiting Zone" />
+      )}
+      {logoUrl && <img className="lg-tl" src={logoUrl} alt="" />}
+      {step === 'idle' && welcomeUrl && <img className="km-welcome-image" src={welcomeUrl} alt="" />}
+      {footerText && <div className="ft-b">{footerText}</div>}
+
+      {step === 'idle' && <button className="tap" onClick={() => setStep('pick')}>{startText}</button>}
 
       {step === 'pick' && (
         <div className="center"><div className="cardw">
+          {categories.length > 0 && <div className="km-customer-categories">
+            <button type="button" className={!categoryId ? 'on' : ''} onClick={() => { setCategoryId(''); setFi(0) }}>{L('All', 'Semua')}</button>
+            {categories.map(category => <button key={category.id} type="button" className={categoryId === category.id ? 'on' : ''} onClick={() => { setCategoryId(category.id); setFi(0) }}>{category.name}</button>)}
+          </div>}
           <div className="pickrow">
-            {frames.length > 1 && <button className="nav" aria-label="Sebelumnya" onClick={() => setFi((fi + frames.length - 1) % frames.length)}>‹</button>}
-            <Strip frame={cur} frameUrl={fl[cur.id]} uid="pick" className="pickstrip" />
-            {frames.length > 1 && <button className="nav" aria-label="Berikutnya" onClick={() => setFi((fi + 1) % frames.length)}>›</button>}
+            {visibleFrames.length > 1 && <button className="nav" aria-label="Sebelumnya" onClick={() => setFi((fi + visibleFrames.length - 1) % visibleFrames.length)}>‹</button>}
+            {selectedFrame && <Strip frame={selectedFrame} frameUrl={resolveFrameUrl(selectedFrame)} uid="pick" className="pickstrip" />}
+            {visibleFrames.length > 1 && <button className="nav" aria-label="Berikutnya" onClick={() => setFi((fi + 1) % visibleFrames.length)}>›</button>}
           </div>
-          <div className="ftitle">{cur.title}</div>
-          {frames.length > 1 && <div className="dots">{frames.map((f, i) => <i key={f.id} className={i === fi ? 'on' : ''} />)}</div>}
-          <button className="btnw pri" onClick={() => choose(cur)}>{L('Choose', 'Pilih')}</button>
+          {selectedFrame
+            ? <>
+              <div className="ftitle">{selectedFrame.title}</div>
+              {visibleFrames.length > 1 && <div className="dots">{visibleFrames.map((f, i) => <i key={f.id} className={i === fi ? 'on' : ''} />)}</div>}
+              <button className="btnw pri" onClick={() => choose(selectedFrame)}>{L('Choose', 'Pilih')}</button>
+            </>
+            : <p>{L('No frames in this category', 'Belum ada frame di kategori ini')}</p>}
         </div></div>
       )}
 
@@ -88,15 +142,15 @@ export default function Customer() {
         <div className="center"><div className="cardw" style={{ width: 360 }}>
           <div className="ftitle">{L('Payment', 'Pembayaran')}</div>
           <div className="pbig">{rp(sync.price)}</div>
-          <button className="btnw pri" onClick={() => pay({})}>{L('Pay with QRIS (simulation)', 'Bayar QRIS (simulasi)')}</button>
+          {!payment.voucherOnly && <button className="btnw pri" onClick={() => pay({})}>{L('Pay with QRIS (simulation)', 'Bayar QRIS (simulasi)')}</button>}
           <input value={vc} onChange={e => setVc(e.target.value)} placeholder="Voucher" aria-label="Voucher" />
           <button className="btnw" onClick={useVoucher}>{L('Use voucher', 'Pakai voucher')}</button>
           <button className="btnw" onClick={() => setStep('pick')}>{L('Back', 'Kembali')}</button>
         </div></div>
       )}
 
-      {step === 'cam' && <Capture frame={frame} frameUrl={fl[frame.id]} code={code.current} startText={et.start_text || L('TOUCH TO START!', 'SENTUH UNTUK MEMULAI!')} onCancel={reset} onDone={s => { setShots(s); setStep('select') }} />}
-      {step === 'select' && <Select frame={frame} frameUrl={fl[frame.id]} shots={shots} onPrint={print} onCancel={reset} />}
+      {step === 'cam' && <Capture frame={frame} frameUrl={resolveFrameUrl(frame)} code={code.current} startText={startText} onCancel={reset} onDone={s => { setShots(s); setStep('select') }} />}
+      {step === 'select' && <Select frame={frame} frameUrl={resolveFrameUrl(frame)} shots={shots} onPrint={print} onCancel={reset} />}
       {step === 'busy' && <div className="center"><div className="cardw"><div className="ftitle">{L('Printing...', 'Mencetak...')}</div></div></div>}
 
       {step === 'done' && (
@@ -104,7 +158,7 @@ export default function Customer() {
           <img src={done.qr} alt="QR" style={{ width: '100%' }} />
           <p style={{ fontSize: 13 }}>{L('Scan to download your photos', 'Scan untuk mengunduh foto kamu')}<br /><small>{cfg.mode === 'event' ? L('Event Mode: the QR works after upload.', 'Mode Event: QR aktif setelah file terunggah.') : L('The QR works once the upload finishes.', 'QR aktif setelah unggah selesai.')}</small></p>
           <button className="btnw pri" onClick={reset}>{L('Start again', 'Mulai lagi')}</button>
-          <button className="btnw" onClick={async () => { try { await N.sessions.reprint(code.current); toast(L('Sent to printer', 'Dikirim ke printer')) } catch (e) { toast(String(e.message || e)) } }}>{L('Extra print', 'Extra print')}</button>
+          {payment.extraPrint && <button className="btnw" onClick={async () => { try { await N.sessions.reprint(code.current); toast(L('Sent to printer', 'Dikirim ke printer')) } catch (e) { toast(String(e.message || e)) } }}>{L('Extra print', 'Extra print')}</button>}
         </div></div>
       )}
     </div>

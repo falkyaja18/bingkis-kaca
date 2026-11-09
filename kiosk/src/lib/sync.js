@@ -9,7 +9,16 @@ export async function doSync(cfg) {
   if (!r.ok) throw j
   j.frame_local = await N.frames.cache(j.frames)
   const t = j.event_theme
-  j.theme_local = t ? await N.assets.cache([{ key: 'bg', url: t.background_url }, { key: 'idle', url: t.idle_video_url }, { key: 'logo', url: t.logo_url }]) : {}
+  const display = j.kiosk_settings?.display || {}
+  const localAssets = await N.assets.cache([
+    { key: 'bg', url: t && t.background_url },
+    { key: 'idle', url: t && t.idle_video_url },
+    { key: 'logo', url: t && t.logo_url },
+    { key: 'kiosk_idle', url: display.idleImage },
+    { key: 'kiosk_welcome', url: display.welcomeImage }
+  ])
+  j.theme_local = { bg: localAssets.bg, idle: localAssets.idle, logo: localAssets.logo }
+  j.kiosk_assets_local = localAssets
   saveSync(j)
   return j
 }

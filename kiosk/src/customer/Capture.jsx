@@ -15,11 +15,15 @@ function drawT(x, v, w, h, cfg) {
 
 // Alur: SENTUH UNTUK MEMULAI -> PERSIAPLAH -> 3-2-1 -> jepret -> RETAKE / NEXT PHOTO (ulang untuk tiap foto)
 export default function Capture({ frame, frameUrl, code, startText, onDone, onCancel }) {
-  const { cfg, L, toast } = useK()
+  const { cfg, sync, L, toast } = useK()
   const sc = frame.slots_config, n = sc.total_captures, dslr = cfg.camDriver !== 'webcam'
+  const timer = sync?.kiosk_settings?.timer || {}, filters = sync?.kiosk_settings?.filters || []
   const vid = useRef(null), stream = useRef(null), ring = useRef([]), ringCv = useRef(null)
-  const dead = useRef(false), wait = useRef(null), shotNo = useRef(0)
+  const dead = useRef(false), wait = useRef(null), shotNo = useRef(0), boothTimer = useRef(null)
   const [phase, setPhase] = useState('ready'), [cd, setCd] = useState(3), [idx, setIdx] = useState(0), [photos, setPhotos] = useState([]), [review, setReview] = useState('')
+  const [filterId, setFilterId] = useState('')
+  const selectedFilter = filters.find(filter => filter.id === filterId)
+  const filterCss = selectedFilter?.effect === 'sepia' ? 'sepia(1)' : selectedFilter?.effect === 'icy' ? 'hue-rotate(155deg) saturate(.8)' : selectedFilter?.effect === 'grayscale' ? 'grayscale(1)' : 'none'
 
   useEffect(() => {
     dead.current = false
@@ -33,15 +37,20 @@ export default function Capture({ frame, frameUrl, code, startText, onDone, onCa
       const c = ringCv.current || (ringCv.current = document.createElement('canvas')); c.width = 480; c.height = Math.round(480 * v.videoHeight / v.videoWidth)
       drawT(c.getContext('2d'), v, c.width, c.height, cfg); ring.current.push(c.toDataURL('image/jpeg', 0.55)); if (ring.current.length > 25) ring.current.shift()
     }, 100)
-    return () => { dead.current = true; clearInterval(t); stream.current && stream.current.getTracks().forEach(x => x.stop()); wait.current && wait.current('cancel') }
+    return () => { dead.current = true; clearInterval(t); clearTimeout(boothTimer.current); stream.current && stream.current.getTracks().forEach(x => x.stop()); wait.current && wait.current('cancel') }
   }, [])
 
   const start = async () => {
+    const boothSeconds = Number(timer.booth)
+    if (boothSeconds > 0) boothTimer.current = setTimeout(() => {
+      if (!dead.current) { toast(L('Photobooth session timed out', 'Waktu sesi photobooth habis')); onCancel() }
+    }, boothSeconds * 1000)
     const finals = [], urls = [], extras = [], live = []
+    const countdown = Math.max(0, Number(timer.countdown ?? 3))
     for (let i = 0; i < n; i++) {
       for (;;) {
         setIdx(i); setPhase('prep'); await sleep(1500)
-        for (let k = 3; k > 0; k--) { if (dead.current) return; setCd(k); setPhase('count'); await sleep(1000) }
+        for (let k = countdown; k > 0; k--) { if (dead.current) return; setCd(k); setPhase('count'); await sleep(1000) }
         if (dead.current) return
         setPhase('shot')
         const snap = ring.current.slice()
@@ -57,20 +66,27 @@ export default function Capture({ frame, frameUrl, code, startText, onDone, onCa
         finals[i] = data; urls[i] = url; live.push(...snap); setPhotos([...urls]); break
       }
     }
-    if (!dead.current) onDone({ finals, urls, extras, live })
+    clearTimeout(boothTimer.current)
+    if (!dead.current) onDone({ finals, urls, extras, live, photoFilter: selectedFilter?.effect || '' })
   }
 
   return (
     <div className="camwrap">
       <div className="camleft">
         <div className="camframe" style={{ aspectRatio: cfg.orient === 'portrait' ? '3 / 4' : '4 / 3' }}>
-          <video ref={vid} autoPlay playsInline muted style={previewStyle(cfg)} />
-          {phase === 'review' && <img className="rev" src={review} alt="" />}
+          <video ref={vid} autoPlay playsInline muted style={{ ...previewStyle(cfg), filter: filterCss }} />
+          {phase === 'review' && <img className="rev" src={review} alt="" style={{ filter: filterCss }} />}
           {phase === 'ready' && <button className="ovy btn" onClick={start}>{startText}</button>}
           {phase === 'prep' && <div className="ovy">{L('GET READY', 'PERSIAPLAH')}</div>}
           {phase === 'count' && <div className="ovy huge" aria-live="assertive">{cd}</div>}
           {phase === 'shot' && <div className="flash" />}
         </div>
+        {phase === 'ready' && filters.length > 0 && (
+          <div className="km-kiosk-filters" aria-label={L('Photo filter', 'Filter foto')}>
+            <button type="button" className={!filterId ? 'on' : ''} onClick={() => setFilterId('')}>{L('Original', 'Asli')}</button>
+            {filters.map(filter => <button key={filter.id} type="button" className={filterId === filter.id ? 'on' : ''} onClick={() => setFilterId(filter.id)}>{filter.name}</button>)}
+          </div>
+        )}
         {phase === 'review' && (
           <div className="revbtns">
             <button className="btnw" onClick={() => wait.current && wait.current('retake')}>Retake photo ↻</button>

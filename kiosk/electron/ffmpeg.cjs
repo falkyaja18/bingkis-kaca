@@ -14,13 +14,19 @@ function run(bin, args, onProgress) {
   })
 }
 const pre = o => [...(o.rot180 ? ['hflip', 'vflip'] : []), ...(o.mirror ? ['hflip'] : [])]   // opsi Putar 180 & Hasil Mirror
+const PHOTO_FILTERS = {
+  icy: 'hue=h=155:s=0.8',
+  sepia: 'colorchannelmixer=rr=.393:rg=.769:rb=.189:gr=.349:gg=.686:gb=.168:br=.272:bg=.534:bb=.131',
+  grayscale: 'hue=s=0'
+}
+const photoFilter = effect => PHOTO_FILTERS[effect] ? [PHOTO_FILTERS[effect]] : []
 
 // Foto di tiap slot (cover-fit) di atas kanvas putih, PNG frame ditumpuk paling atas
-function compositeArgs({ raws, slots, w, h, frame, out, mirror, rot180 }) {
+function compositeArgs({ raws, slots, w, h, frame, out, mirror, rot180, effect }) {
   const a = ['-y', '-f', 'lavfi', '-i', `color=c=white:s=${w}x${h}`]
   raws.forEach(r => a.push('-i', r)); if (frame) a.push('-i', frame)
   const fc = []
-  slots.forEach((s, i) => fc.push(`[${1 + ((s.capture ?? i) % raws.length)}:v]${[...pre({ mirror, rot180 }), `scale=${s.width}:${s.height}:force_original_aspect_ratio=increase`, `crop=${s.width}:${s.height}`].join(',')}[p${i}]`))
+  slots.forEach((s, i) => fc.push(`[${1 + ((s.capture ?? i) % raws.length)}:v]${[...pre({ mirror, rot180 }), ...photoFilter(effect), `scale=${s.width}:${s.height}:force_original_aspect_ratio=increase`, `crop=${s.width}:${s.height}`].join(',')}[p${i}]`))
   let cur = '0:v'
   slots.forEach((s, i) => { fc.push(`[${cur}][p${i}]overlay=${s.x}:${s.y}[o${i}]`); cur = `o${i}` })
   if (frame) { fc.push(`[${1 + raws.length}:v]scale=${w}:${h}[fr]`, `[${cur}][fr]overlay=0:0[final]`); cur = 'final' }
@@ -30,9 +36,9 @@ function compositeArgs({ raws, slots, w, h, frame, out, mirror, rot180 }) {
 const composite = (bin, o, onProgress) => run(bin, compositeArgs(o), onProgress)
 
 // GIF animasi dari foto mentah (tiap pose 0,7 detik)
-function gifArgs({ raws, out, width = 480, mirror, rot180 }) {
+function gifArgs({ raws, out, width = 480, mirror, rot180, effect }) {
   const a = ['-y']; raws.forEach(r => a.push('-loop', '1', '-t', '0.7', '-i', r))
-  const fc = raws.map((_, i) => `[${i}:v]${[...pre({ mirror, rot180 }), `scale=${width}:-2`, 'setsar=1', 'fps=10'].join(',')}[v${i}]`)
+  const fc = raws.map((_, i) => `[${i}:v]${[...pre({ mirror, rot180 }), ...photoFilter(effect), `scale=${width}:-2`, 'setsar=1', 'fps=10'].join(',')}[v${i}]`)
   fc.push(`${raws.map((_, i) => `[v${i}]`).join('')}concat=n=${raws.length}:v=1:a=0,split[a][b]`, '[a]palettegen[p]', '[b][p]paletteuse')
   a.push('-filter_complex', fc.join(';'), '-loop', '0', out)
   return a

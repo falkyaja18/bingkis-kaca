@@ -3,6 +3,7 @@ import { LayoutDashboard, Aperture, Image, Images, ChartColumn, Banknote, Layers
 import { hasToken, login, logout, getUser } from './api.js'
 import { StoreProvider, useStore } from './store.jsx'
 import { Kiosks, PublicGalleries, Vouchers, Frames, Branches } from './pages/Master.jsx'
+import FrameGif from './pages/FrameGif.jsx'
 import Overview from './pages/Overview.jsx'
 import { Gallery, Stats, Transactions } from './pages/Reports.jsx'
 import { SoftFile, PayKey } from './pages/Settings.jsx'
@@ -11,7 +12,7 @@ import fotoLogo from './assets/logo.png'
 const MENU = [
   ['overview', 'Overview', LayoutDashboard, () => <Overview />], ['kiosk', 'Kiosk', Aperture, () => <Kiosks />], ['gallery', 'Gallery', Image, () => <Gallery />],
   ['public', 'Public Gallery', Images, () => <PublicGalleries />], ['stats', 'Statistics', ChartColumn, () => <Stats />], ['trx', 'Transaction', Banknote, () => <Transactions />],
-  ['framephoto', 'Frame Photo', Layers, () => <Frames type="PHOTO" />], ['framegif', 'Frame GIF', Film, () => <Frames type="GIF" />],
+  ['framephoto', 'Frame Photo', Layers, () => <Frames type="PHOTO" />], ['framegif', 'Frame GIF', Film, () => <FrameGif />],
   ['softfile', 'Soft File UI', QrCode, () => <SoftFile />], ['voucher', 'Voucher', Ticket, () => <Vouchers />], ['paykey', 'Payment Key', KeyRound, () => <PayKey />],
   ['branch', 'Branch Manager', Building2, () => <Branches />]
 ]

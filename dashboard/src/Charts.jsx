@@ -40,16 +40,19 @@ export function Spark({ values, color = '#6c4cf5' }) {
   )
 }
 
-export function Donut({ items }) {
+export function Donut({ items, centerLabel, centerValue, fmt }) {
   const total = items.reduce((a, i) => a + i.value, 0), R = 52, C = 2 * Math.PI * R
   let off = 0
   return (
     <div className="donutw">
-      <svg width="140" height="140" viewBox="0 0 140 140" role="img" aria-label="Porsi pendapatan per booth">
-        <circle cx="70" cy="70" r={R} fill="none" stroke="var(--field)" strokeWidth="18" />
-        {items.map(i => { const len = C * i.value / total, el = <circle key={i.label} cx="70" cy="70" r={R} fill="none" stroke={i.color} strokeWidth="18" strokeDasharray={`${len} ${C - len}`} strokeDashoffset={-off} transform="rotate(-90 70 70)" />; off += len; return el })}
-      </svg>
-      <div>{items.map(i => <div className="lg" key={i.label}><i style={{ background: i.color }} />{i.label} <b>{Math.round(i.value / total * 100)}%</b></div>)}</div>
+      <div className="donutwrap">
+        <svg width="170" height="170" viewBox="0 0 140 140" role="img" aria-label="Porsi pendapatan per booth">
+          <circle cx="70" cy="70" r={R} fill="none" stroke="var(--field)" strokeWidth="18" />
+          {items.map(i => { const len = C * i.value / total, el = <circle key={i.label} cx="70" cy="70" r={R} fill="none" stroke={i.color} strokeWidth="18" strokeDasharray={`${len} ${C - len}`} strokeDashoffset={-off} transform="rotate(-90 70 70)" />; off += len; return el })}
+        </svg>
+        {(centerLabel || centerValue) && <div className="donutc"><span>{centerLabel}</span><b>{centerValue}</b></div>}
+      </div>
+      <div className="donutlg">{items.map(i => <div className="lg" key={i.label}><i style={{ background: i.color }} />{i.label}<span className="sp" />{fmt ? fmt(i.value) : null}<b>{Math.round(i.value / total * 100)}%</b></div>)}</div>
     </div>
   )
 }

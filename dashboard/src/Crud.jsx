@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { api } from './api.js'
 
-export function Modal({ title, onClose, children }) {
+export function Modal({ title, onClose, children, className = '' }) {
   return (
     <div className="ov" onMouseDown={e => e.target === e.currentTarget && onClose()}>
-      <div className="dlg" role="dialog" aria-modal="true" aria-label={title}><h1>{title}</h1>{children}</div>
+      <div className={className ? `dlg ${className}` : 'dlg'} role="dialog" aria-modal="true" aria-label={title}><h1>{title}</h1>{children}</div>
     </div>
   )
 }

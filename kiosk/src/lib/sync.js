@@ -14,8 +14,11 @@ export async function doSync(cfg) {
     { key: 'bg', url: t && t.background_url },
     { key: 'idle', url: t && t.idle_video_url },
     { key: 'logo', url: t && t.logo_url },
+    { key: 'kiosk_logo', url: display.logoImage },
     { key: 'kiosk_idle', url: display.idleImage },
-    { key: 'kiosk_welcome', url: display.welcomeImage }
+    { key: 'kiosk_welcome', url: display.welcomeImage },
+    { key: 'kiosk_tutorial', url: display.tutorialImage },
+    { key: 'kiosk_qr_logo', url: display.qrLogo }
   ])
   j.theme_local = { bg: localAssets.bg, idle: localAssets.idle, logo: localAssets.logo }
   j.kiosk_assets_local = localAssets

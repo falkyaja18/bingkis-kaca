@@ -41,13 +41,22 @@ const COMMANDS = [
 
 const DEFAULT_DISPLAY = {
   layout: 'custom',
-  customWelcome: false,
+  customWelcome: true,
   backgroundColor: '#000000',
   textColor: '#ffffff',
+  uiAccent: '#ffffff',
   welcomeText: '',
   footerText: '',
+  logoImage: '',
   welcomeImage: '',
-  idleImage: ''
+  tutorialImage: '',
+  idleImage: '',
+  qrLogo: '',
+  galleryThemeEnabled: false,
+  galleryAccent: '#6c4cf5',
+  galleryBackground: '#ffffff',
+  instagram: '',
+  tiktok: ''
 }
 const DEFAULT_GENERAL = { pin: '0000', paymentKey: '' }
 const DEFAULT_PAYMENT = {
@@ -55,7 +64,8 @@ const DEFAULT_PAYMENT = {
   disablePaywall: false,
   price: 35000,
   copies: '4R (x1)',
-  extraPrint: false
+  extraPrint: false,
+  extraPrintMax: 5
 }
 const DEFAULT_TIMER = { countdown: 4, booth: 500, qr: 80 }
 const DEFAULT_CAMERA = {
@@ -98,6 +108,17 @@ function Toggle({ checked, onChange, label }) {
   )
 }
 
+function ColorSetting({ label, value, onChange }) {
+  return (
+    <Field label={label}>
+      <div className="km-color-setting">
+        <input type="color" value={value || '#000000'} onChange={event => onChange(event.target.value)} />
+        <code>{value || '#000000'}</code>
+      </div>
+    </Field>
+  )
+}
+
 function UploadField({ label, value, accept, onChange }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -133,6 +154,101 @@ function UploadField({ label, value, accept, onChange }) {
       {busy && <small>Mengunggah…</small>}
       {error && <small className="err">{error}</small>}
     </Field>
+  )
+}
+
+function DisplaySettings({ settings, setSection }) {
+  const [preview, setPreview] = useState('welcome')
+  const value = key => settings.display[key]
+  const set = (key, next) => setSection('display', key, next)
+  const customWelcome = value('layout') === 'custom' && value('customWelcome')
+  const previewAsset = preview === 'welcome' ? value('welcomeImage') : value('tutorialImage')
+  const previewVideo = /\.((mp4)|(webm))(\?|$)/i.test(previewAsset || '')
+  const previewLogo = preview === 'softfile' && value('qrLogo') ? value('qrLogo') : value('logoImage')
+  const previewStyle = {
+    backgroundColor: preview === 'softfile' && value('galleryThemeEnabled')
+      ? value('galleryBackground') || '#ffffff'
+      : customWelcome ? value('backgroundColor') || '#000000' : '#1b1d22',
+    color: preview === 'welcome' && customWelcome ? value('textColor') || '#ffffff' : '#ffffff',
+    backgroundImage: previewAsset && !previewVideo ? `url("${previewAsset}")` : undefined,
+    '--accent': value('uiAccent') || '#ffffff'
+  }
+
+  return (
+    <div className="km-display-grid">
+      <div className="km-display-form">
+        <div className="km-display-row">
+          <Field label="Layout Welcome">
+            <select value={value('layout')} onChange={event => set('layout', event.target.value)}>
+              <option value="custom">Custom (gambar full-bg)</option>
+              <option value="default">Default</option>
+            </select>
+          </Field>
+          <Toggle label="Layout Welcome custom (preview kamera)" checked={value('customWelcome')} onChange={next => set('customWelcome', next)} />
+        </div>
+        <div className="km-display-colors">
+          <ColorSetting label="Warna background" value={value('backgroundColor')} onChange={next => set('backgroundColor', next)} />
+          <ColorSetting label="Warna teks" value={value('textColor')} onChange={next => set('textColor', next)} />
+          <ColorSetting label="Warna garis & aksen UI kiosk" value={value('uiAccent')} onChange={next => set('uiAccent', next)} />
+        </div>
+        <div className="km-display-row">
+          <Field label="Teks welcome"><input value={value('welcomeText')} onChange={event => set('welcomeText', event.target.value)} /></Field>
+          <Field label="Teks bawah"><input value={value('footerText')} onChange={event => set('footerText', event.target.value)} /></Field>
+        </div>
+        <div className="km-display-assets">
+          <UploadField label="Logo kiosk" accept="image/*" value={value('logoImage')} onChange={next => set('logoImage', next)} />
+          <UploadField label="Background welcome" accept="image/*,video/mp4,video/webm" value={value('welcomeImage')} onChange={next => set('welcomeImage', next)} />
+          <UploadField label="Background tutorial" accept="image/*" value={value('tutorialImage')} onChange={next => set('tutorialImage', next)} />
+          <UploadField label="Background idle" accept="image/*,video/mp4,video/webm" value={value('idleImage')} onChange={next => set('idleImage', next)} />
+        </div>
+        <div className="km-display-subsection">
+          <div className="km-display-subhead"><b>Logo QR Digital</b><small>Override logo untuk halaman foto digital kiosk ini.</small></div>
+          <UploadField label="Upload logo QR (khusus kiosk ini)" accept="image/*" value={value('qrLogo')} onChange={next => set('qrLogo', next)} />
+        </div>
+        <div className="km-display-subsection">
+          <div className="km-display-subhead">
+            <div><b>Tema Halaman Galeri Digital</b><small>Override tema halaman digital khusus kiosk ini.</small></div>
+            <input aria-label="Aktifkan override tema galeri digital" type="checkbox" checked={value('galleryThemeEnabled')} onChange={event => set('galleryThemeEnabled', event.target.checked)} />
+          </div>
+          <div className="km-display-row">
+            <ColorSetting label="Warna aksen" value={value('galleryAccent')} onChange={next => set('galleryAccent', next)} />
+            <ColorSetting label="Warna latar" value={value('galleryBackground')} onChange={next => set('galleryBackground', next)} />
+            <Field label="Instagram"><input value={value('instagram')} onChange={event => set('instagram', event.target.value)} placeholder="@akun" /></Field>
+            <Field label="TikTok"><input value={value('tiktok')} onChange={event => set('tiktok', event.target.value)} placeholder="@akun" /></Field>
+          </div>
+        </div>
+        <div className="note km-span-all">Background tutorial digunakan pada halaman pilih frame, sesi foto, dan pilih gaya.</div>
+      </div>
+      <aside className="km-live-preview">
+        <div className="km-live-head">
+          <b>Live Preview</b>
+          <div role="tablist" aria-label="Mode preview kiosk">
+            {['welcome', 'frame', 'softfile'].map((mode, index) => (
+              <button key={mode} type="button" role="tab" aria-selected={preview === mode} className={preview === mode ? 'on' : ''} onClick={() => setPreview(mode)}>
+                {['Welcome', 'Pilih Frame', 'Soft File'][index]}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className={`km-preview-screen km-preview-${preview}`} style={previewStyle}>
+          {previewVideo && <video className="km-preview-media" src={previewAsset} muted autoPlay loop playsInline />}
+          {previewLogo && <img className="km-preview-logo" src={previewLogo} alt="Logo kiosk" />}
+          {preview === 'welcome' ? (
+            <div className="km-preview-copy">
+              <small>Photobooth</small>
+              <strong>{customWelcome && value('welcomeText') || 'Sentuh untuk memulai'}</strong>
+              <span>{customWelcome && value('footerText') || 'Simpan momen spesialmu'}</span>
+              <button type="button">MULAI</button>
+            </div>
+          ) : preview === 'frame' ? (
+            <div className="km-preview-copy"><strong>Pilih Frame</strong><div className="km-preview-frame"><i /><i /><i /></div><button type="button">LANJUT</button></div>
+          ) : (
+            <div className="km-preview-copy"><strong>Hasil Foto</strong><span>Scan QR untuk mengunduh soft file</span><button type="button">MULAI LAGI</button></div>
+          )}
+        </div>
+        <small className="km-preview-caption">Pratinjau langsung dari pengaturan kiosk.</small>
+      </aside>
+    </div>
   )
 }
 
@@ -359,7 +475,7 @@ function KioskDetail({ kiosk, onBack }) {
   const { health } = useHealth()
   const initialSettings = kioskSettings(kiosk, S.frames, S.pay?.price ?? 35000)
   const [draft, setDraft] = useState({ ...kiosk, settings: initialSettings })
-  const [tab, setTab] = useState('info')
+  const [tab, setTab] = useState('display')
   const [query, setQuery] = useState('')
   const [dirty, setDirty] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -399,7 +515,7 @@ function KioskDetail({ kiosk, onBack }) {
     <div className="km-detail">
       <button type="button" className="km-back" onClick={onBack}>‹ &nbsp;Daftar Kiosk</button>
       <div className="km-detail-title">
-        <Field label="Nama Kiosk"><input value={draft.name} onChange={event => setRoot('name', event.target.value)} /></Field>
+        <h1>{draft.name || 'Kiosk tanpa nama'}</h1>
         <button type="button" className="btn ghost" onClick={() => setShowControl(value => !value)}>Kontrol Jarak Jauh</button>
       </div>
       <div className="km-detail-nav">
@@ -422,7 +538,7 @@ function KioskDetail({ kiosk, onBack }) {
         {visibleTabs.map(([key, label]) => <button key={key} type="button" className={tab === key ? 'on' : ''} onClick={() => setTabValue(key)}>{label}</button>)}
         {!visibleTabs.length && <span className="km-no-tabs">Tidak ada tab yang cocok.</span>}
       </div>
-      <div className="km-content">
+      <div className={'km-content' + (tab === 'display' ? ' km-display-content' : '')}>
         {tab === 'info' && (
           <div className="km-section km-info-grid">
             <div><small>Status kiosk</small><b className={status.online ? 'km-green' : 'km-red'}>{status.online ? 'Online' : 'Offline'}</b></div>
@@ -437,35 +553,28 @@ function KioskDetail({ kiosk, onBack }) {
           </div>
         )}
         {tab === 'display' && (
-          <div className="km-section km-form-grid">
-            <Field label="Layout Welcome"><select value={settingValue('display', 'layout')} onChange={event => setSection('display', 'layout', event.target.value)}><option value="custom">Custom (gambar/tulisan)</option><option value="default">Default</option></select></Field>
-            <Field label="Warna background"><input type="color" value={settingValue('display', 'backgroundColor')} onChange={event => setSection('display', 'backgroundColor', event.target.value)} /></Field>
-            <Field label="Warna teks"><input type="color" value={settingValue('display', 'textColor')} onChange={event => setSection('display', 'textColor', event.target.value)} /></Field>
-            <Field label="Teks welcome"><input value={settingValue('display', 'welcomeText')} onChange={event => setSection('display', 'welcomeText', event.target.value)} /></Field>
-            <Field label="Teks bawah"><input value={settingValue('display', 'footerText')} onChange={event => setSection('display', 'footerText', event.target.value)} /></Field>
-            <UploadField label="Upload background idle" accept="image/*" value={settingValue('display', 'idleImage')} onChange={value => setSection('display', 'idleImage', value)} />
-            <UploadField label="Upload gambar welcome" accept="image/*" value={settingValue('display', 'welcomeImage')} onChange={value => setSection('display', 'welcomeImage', value)} />
-            <div className="note km-span-all">Layar tutorial belum diaktifkan; pengaturan tutorial tidak diterapkan ke kiosk.</div>
-          </div>
+          <DisplaySettings settings={draft.settings} setSection={setSection} />
         )}
         {tab === 'general' && (
           <div className="km-section km-form-grid">
             <Field label="Nama Kiosk"><input value={draft.name} onChange={event => setRoot('name', event.target.value)} /></Field>
             <Field label="PIN"><input inputMode="numeric" value={settingValue('general', 'pin')} onChange={event => setSection('general', 'pin', event.target.value)} /></Field>
-            <Field label="Payment Key"><select value={settingValue('general', 'paymentKey')} onChange={event => setSection('general', 'paymentKey', event.target.value)}><option value="">Pilih</option><option value="default">{S.pay?.provider || 'QRIS'} (default)</option></select></Field>
             <Field label="Cabang"><select value={draft.branch || ''} onChange={event => setRoot('branch', event.target.value)}><option value="">-</option>{S.branches.map(branch => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select></Field>
             <Field label="Tanggal kadaluarsa lisensi"><input type="date" value={draft.licenseExpiry || ''} onChange={event => setRoot('licenseExpiry', event.target.value)} /></Field>
-            <div className="note km-span-all">Payment Key belum terhubung ke payment gateway. QRIS masih simulasi.</div>
+            <div className="note km-span-all">Pembayaran dilakukan di kasir dan tidak diproses oleh kiosk.</div>
           </div>
         )}
         {tab === 'frames' && <FrameSettings S={S} settings={draft.settings} setSection={setSection} />}
         {tab === 'payment' && (
           <div className="km-section km-form-grid">
-            <Toggle label="Voucher Only (nonaktifkan bayar)" checked={settingValue('payment', 'voucherOnly')} onChange={value => setSection('payment', 'voucherOnly', value)} />
-            <Toggle label="Matikan Paywall (mode event)" checked={settingValue('payment', 'disablePaywall')} onChange={value => setSection('payment', 'disablePaywall', value)} />
             <Field label="Harga per cetak (IDR)"><input type="number" min="0" value={settingValue('payment', 'price')} onChange={event => setSection('payment', 'price', Number(event.target.value))} /></Field>
             <Field label="Jumlah cetak ganda"><select value={settingValue('payment', 'copies')} onChange={event => setSection('payment', 'copies', event.target.value)}><option>4R (x1)</option><option>4R (x2)</option><option>4R (x4)</option><option>6R (x1)</option></select></Field>
             <Toggle label="Aktifkan Extra Print" checked={settingValue('payment', 'extraPrint')} onChange={value => setSection('payment', 'extraPrint', value)} />
+            {settingValue('payment', 'extraPrint') && <Field label="Maksimum jumlah Extra Print"><input type="number" min="1" step="1" value={settingValue('payment', 'extraPrintMax')} onChange={event => {
+              const next = Number(event.target.value)
+              setSection('payment', 'extraPrintMax', Number.isFinite(next) ? Math.max(1, Math.floor(next)) : 5)
+            }} /></Field>}
+            <div className="note km-span-all">Pembayaran dilakukan di kasir; kiosk tidak menampilkan QRIS pembayaran. QR pada hasil akhir digunakan untuk mengunduh soft file.</div>
           </div>
         )}
         {tab === 'timer' && (

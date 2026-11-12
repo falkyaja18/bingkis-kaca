@@ -232,7 +232,8 @@ app.post('/api/v1/sync/failsave-ingest', kau, upl.fields([{ name: 'photo', maxCo
 
 /* ================= HALAMAN PUBLIK (tema dari Soft File UI) ================= */
 const lum = h => { const n = parseInt(String(h).slice(1), 16) || 0; return ((n >> 16) * 299 + (n >> 8 & 255) * 587 + (n & 255) * 114) / 1000; };
-const page = (title, body) => { const t = S.soft, ink = lum(t.bg) > 150 ? '#111' : '#fff', ai = lum(t.accent) > 150 ? '#111' : '#fff';
+const safeColor = (value, fallback) => /^#[0-9a-f]{6}$/i.test(String(value || '')) ? value : fallback;
+const page = (title, body, theme = S.soft) => { const t = theme, ink = lum(t.bg) > 150 ? '#111' : '#fff', ai = lum(t.accent) > 150 ? '#111' : '#fff';
   const soc = [t.ig && `<a href="https://instagram.com/${esc(t.ig.replace('@', ''))}">Instagram ${esc(t.ig)}</a>`, t.tt && `<a href="https://tiktok.com/@${esc(t.tt.replace('@', ''))}">TikTok ${esc(t.tt)}</a>`].filter(Boolean).join(' &nbsp; ');
   return `<!DOCTYPE html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title>
 <style>body{margin:0;background:${t.bg};color:${ink};font-family:system-ui,sans-serif;text-align:center;padding:24px}a{color:inherit}img{max-width:100%;border-radius:10px}
@@ -241,9 +242,18 @@ const page = (title, body) => { const t = S.soft, ink = lum(t.bg) > 150 ? '#111'
 app.get('/s/:code', (req, res) => {
   const s = S.sessions.find(x => x.code === req.params.code);
   if (!s || new Date(s.expiredAt) < Date.now()) return res.status(404).send(page('Foto tidak ditemukan', '<p>Foto tidak ada atau sudah kedaluwarsa.</p>'));
+  const display = S.kiosks.find(kiosk => kiosk.id === s.kiosk)?.settings?.display || {};
+  const theme = { ...S.soft };
+  if (display.galleryThemeEnabled) {
+    theme.accent = safeColor(display.galleryAccent, theme.accent);
+    theme.bg = safeColor(display.galleryBackground, theme.bg);
+    theme.ig = display.instagram || '';
+    theme.tt = display.tiktok || '';
+  }
+  if (display.qrLogo) theme.logo = display.qrLogo;
   res.send(page('Foto kamu', `<img src="${s.composite}" alt="Hasil foto" style="max-width:420px;width:100%"><br><a class="btn" href="${s.composite}" download="photo-${s.code}.jpg">Unduh foto</a>` +
     (s.live ? `<br><video src="${s.live}" autoplay loop muted playsinline controls style="max-width:300px;border-radius:10px"></video><br><a class="btn" href="${s.live}" download="live-${s.code}.mp4">Unduh Live Photo</a>` : '') +
-    (s.gif ? `<br><img src="${s.gif}" alt="GIF" style="max-width:300px"><br><a class="btn" href="${s.gif}" download="photo-${s.code}.gif">Unduh GIF</a>` : '')));
+    (s.gif ? `<br><img src="${s.gif}" alt="GIF" style="max-width:300px"><br><a class="btn" href="${s.gif}" download="photo-${s.code}.gif">Unduh GIF</a>` : ''), theme));
 });
 app.get('/e/:slug', (req, res) => {
   const g = S.galleries.find(x => x.slug === req.params.slug);

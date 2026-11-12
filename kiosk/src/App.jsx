@@ -35,8 +35,10 @@ export default function App() {
       if (camera.previewMirror != null) remote.mirrorPrev = camera.previewMirror
       if (camera.resultMirror != null) remote.mirrorRes = camera.resultMirror
       if (payment.copies) remote.copies = Math.max(1, Number(/\(x(\d+)\)/i.exec(payment.copies)?.[1]) || 1)
+      if (Number.isFinite(Number(payment.extraPrintMax)) && Number(payment.extraPrintMax) > 0) remote.extraPrintMax = Math.floor(Number(payment.extraPrintMax))
       if (Object.entries(remote).some(([key, value]) => cfgRef.current[key] !== value)) patchCfg(remote)
       if (j.kiosk_info.id !== k.kioskId) patchCfg({ kioskId: j.kiosk_info.id })
+      if (N) await N.config.set(cfgRef.current)
       if (manual) toast(k.lang === 'EN' ? 'Sync complete' : 'Sinkronisasi selesai')
     } catch (e) { toast((k.lang === 'EN' ? 'Sync failed: ' : 'Sync gagal: ') + (e.error || e.message || '')) }
   }, [toast, patchCfg])

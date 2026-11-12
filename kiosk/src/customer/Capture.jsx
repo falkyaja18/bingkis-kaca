@@ -17,14 +17,10 @@ function drawT(x, v, w, h, cfg) {
 export default function Capture({ frame, frameUrl, code, startText, onDone, onCancel }) {
   const { cfg, sync, L, toast } = useK()
   const sc = frame.slots_config, n = sc.total_captures, dslr = cfg.camDriver !== 'webcam'
-  const timer = sync?.kiosk_settings?.timer || {}, filters = sync?.kiosk_settings?.filters || []
+  const timer = sync?.kiosk_settings?.timer || {}
   const vid = useRef(null), stream = useRef(null), ring = useRef([]), ringCv = useRef(null)
   const dead = useRef(false), wait = useRef(null), shotNo = useRef(0), boothTimer = useRef(null)
   const [phase, setPhase] = useState('ready'), [cd, setCd] = useState(3), [idx, setIdx] = useState(0), [photos, setPhotos] = useState([]), [review, setReview] = useState('')
-  const [filterId, setFilterId] = useState('')
-  const selectedFilter = filters.find(filter => filter.id === filterId)
-  const filterCss = selectedFilter?.effect === 'sepia' ? 'sepia(1)' : selectedFilter?.effect === 'icy' ? 'hue-rotate(155deg) saturate(.8)' : selectedFilter?.effect === 'grayscale' ? 'grayscale(1)' : 'none'
-
   useEffect(() => {
     dead.current = false
     ;(async () => {
@@ -67,30 +63,26 @@ export default function Capture({ frame, frameUrl, code, startText, onDone, onCa
       }
     }
     clearTimeout(boothTimer.current)
-    if (!dead.current) onDone({ finals, urls, extras, live, photoFilter: selectedFilter?.effect || '' })
+    if (!dead.current) onDone({ finals, urls, extras, live })
   }
 
   return (
     <div className="camwrap">
       <div className="camleft">
         <div className="camframe" style={{ aspectRatio: cfg.orient === 'portrait' ? '3 / 4' : '4 / 3' }}>
-          <video ref={vid} autoPlay playsInline muted style={{ ...previewStyle(cfg), filter: filterCss }} />
-          {phase === 'review' && <img className="rev" src={review} alt="" style={{ filter: filterCss }} />}
+          <video ref={vid} autoPlay playsInline muted style={previewStyle(cfg)} />
+          {phase === 'review' && <img className="rev" src={review} alt="" />}
           {phase === 'ready' && <button className="ovy btn" onClick={start}>{startText}</button>}
           {phase === 'prep' && <div className="ovy">{L('GET READY', 'PERSIAPLAH')}</div>}
           {phase === 'count' && <div className="ovy huge" aria-live="assertive">{cd}</div>}
           {phase === 'shot' && <div className="flash" />}
         </div>
-        {phase === 'ready' && filters.length > 0 && (
-          <div className="km-kiosk-filters" aria-label={L('Photo filter', 'Filter foto')}>
-            <button type="button" className={!filterId ? 'on' : ''} onClick={() => setFilterId('')}>{L('Original', 'Asli')}</button>
-            {filters.map(filter => <button key={filter.id} type="button" className={filterId === filter.id ? 'on' : ''} onClick={() => setFilterId(filter.id)}>{filter.name}</button>)}
-          </div>
-        )}
         {phase === 'review' && (
           <div className="revbtns">
             <button className="btnw" onClick={() => wait.current && wait.current('retake')}>Retake photo ↻</button>
-            <button className="btnw pri" onClick={() => wait.current && wait.current('next')}>Next photo →</button>
+            <button className="btnw pri" onClick={() => wait.current && wait.current('next')}>
+              {idx + 1 < n ? 'Next photo →' : 'Pilih gaya →'}
+            </button>
           </div>
         )}
       </div>

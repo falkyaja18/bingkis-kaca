@@ -24,14 +24,20 @@ const writeIdx = a => writeJson(idxFile(), a)
 /* ---------- cetak ---------- */
 const PAGE = { '4x6': [101600, 152400], '6x8': [152400, 203200], '5x7': [127000, 177800] }
 async function printFile(file, copies = 1) {
+  const count = Number(copies)
+  if (!Number.isInteger(count) || count < 1) throw new Error('jumlah cetak tidak valid')
+  const printers = await win.webContents.getPrintersAsync()
+  if (!printers.length) throw new Error('printer tidak terdeteksi')
+  if (cfg.printer && !printers.some(printer => printer.name === cfg.printer))
+    throw new Error(`printer "${cfg.printer}" tidak tersedia`)
   const html = path.join(P.temp, 'print_job.html')
   await fsp.writeFile(html, `<!doctype html><style>@page{margin:0}body{margin:0}img{width:100%;display:block}</style><img src="${pathToFileURL(file).href}">`)
   const w = new BrowserWindow({ show: false, webPreferences: { sandbox: true } })
   try {
     await w.loadFile(html)
     const [pw, ph] = PAGE[cfg.paper] || PAGE['4x6']
-    await new Promise((ok, no) => w.webContents.print({ silent: true, printBackground: true, deviceName: cfg.printer || '', copies, margins: { marginType: 'none' }, pageSize: { width: pw, height: ph } }, (success, why) => success ? ok() : no(new Error(why || 'print gagal'))))
-    state.paperRemaining = Math.max(0, (state.paperRemaining ?? state.paperCap) - copies); writeJson(stateFile(), state)
+    await new Promise((ok, no) => w.webContents.print({ silent: true, printBackground: true, deviceName: cfg.printer || '', copies: count, margins: { marginType: 'none' }, pageSize: { width: pw, height: ph } }, (success, why) => success ? ok() : no(new Error(why || 'print gagal'))))
+    state.paperRemaining = Math.max(0, (state.paperRemaining ?? state.paperCap) - count); writeJson(stateFile(), state)
   } finally { w.destroy() }
 }
 
@@ -70,8 +76,10 @@ async function finalizeSession(p) {
   const ts = new Date().toISOString()
   // 1) simpan ke failsave dulu (zero data loss), 2) cetak, 3) daemon mengunggah di latar belakang
   await engine.save({ transactionUuid: code, sessionCode: code, kioskId: cfg.kioskId || '', galleryId: p.galleryId || null, trxId: p.trx ? p.trx.id : null, timestamp: ts, paymentDetails: pd, printCount: 1 }, { photo: printOut, gif, live, raws, extras })
-  const idx = readIdx(); idx.unshift({ code, createdAt: ts, prints: 0, gif: !!gif }); writeIdx(idx)
-  printFile(printOut, cfg.copies || 1).then(() => { const a = readIdx(), e = a.find(x => x.code === code); if (e) { e.prints = cfg.copies || 1; writeIdx(a) } }).catch(e => { log('print', e.message); rdm && rdm.send('rdm:kiosk:error_alert', { errorCode: 'PRINT_FAILED', severity: 'CRITICAL', timestamp: new Date().toISOString(), detail: e.message }) })
+  const idx = readIdx().filter(item => item.code !== code); idx.unshift({ code, createdAt: ts, prints: 0, gif: !!gif }); writeIdx(idx)
+  await printFile(printOut, cfg.copies || 1)
+  const printed = readIdx(), current = printed.find(item => item.code === code)
+  if (current) { current.prints = cfg.copies || 1; writeIdx(printed) }
   fsp.rm(tmp, { recursive: true, force: true }).catch(() => {})
   trimPrint()
   if (cfg.mode === 'normal' && cfg.token) engine.triggerBatchSync().catch(() => {})
@@ -149,7 +157,19 @@ function ipc() {
   ipcMain.handle('camera:test', () => cameraTest())
   ipcMain.handle('session:finalize', (_e, p) => finalizeSession(p))
   ipcMain.handle('sessions:list', () => listSessions())
-  ipcMain.handle('sessions:reprint', async (_e, code) => { await printFile(path.join(P.print, `tx_${code}_print.jpg`), cfg.copies || 1); const a = readIdx(), e = a.find(x => x.code === code); if (e) { e.prints = (e.prints || 0) + (cfg.copies || 1); writeIdx(a) } return true })
+  ipcMain.handle('sessions:reprint', async (_e, code, copies) => {
+    const safeCode = String(code || '').replace(/[^A-Za-z0-9_-]/g, '')
+    const count = Number(copies === undefined ? cfg.copies || 1 : copies), max = Math.max(1, Math.floor(Number(cfg.extraPrintMax) || 5))
+    if (!safeCode || safeCode !== code) throw new Error('kode sesi tidak valid')
+    if (!Number.isInteger(count) || count < 1) throw new Error('jumlah cetak tidak valid')
+    if (copies !== undefined && count > max) throw new Error(`jumlah cetak harus 1 sampai ${max}`)
+    const file = path.join(P.print, `tx_${safeCode}_print.jpg`)
+    if (!fs.existsSync(file)) throw new Error('file hasil cetak tidak ditemukan')
+    await printFile(file, count)
+    const a = readIdx(), e = a.find(x => x.code === safeCode)
+    if (e) { e.prints = (e.prints || 0) + count; writeIdx(a) }
+    return true
+  })
   ipcMain.handle('sessions:last', async () => { const e = readIdx()[0]; if (!e) return false; await printFile(path.join(P.print, `tx_${e.code}_print.jpg`), cfg.copies || 1); return true })
   ipcMain.handle('sessions:retry', async (_e, code) => engine.triggerBatchSync(code || undefined))
   ipcMain.handle('sessions:reveal', (_e, code) => shell.showItemInFolder(path.join(P.print, `tx_${code}_print.jpg`)))
